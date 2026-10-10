@@ -1,0 +1,622 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TUPÉ · Carla Di Sí</title>
+<style>
+  @font-face { font-family: "IDBlack"; src: local("Inter Display Black"), local("InterDisplay-Black"); }
+  @font-face { font-family: "IDLight"; src: local("Inter Display Light"), local("InterDisplay-Light"); }
+  @font-face { font-family: "IDXLight"; src: local("Inter Display ExtraLight"), local("InterDisplay-ExtraLight"); }
+  @font-face { font-family: "IDMedium"; src: local("Inter Display Medium"), local("InterDisplay-Medium"); }
+  @font-face { font-family: "IDSemi"; src: local("Inter Display SemiBold"), local("InterDisplay-SemiBold"); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; height: 100vh; width: auto; margin: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script src="brand.js"></script>
+<script>
+"use strict";
+// ============================================================================
+//  TUPÉ · Carla Di Sí — spot 15 s, 1080×1920, 60 fps
+//  Cada frame es una función pura de t. Los golpes visuales salen de la MISMA
+//  lista de eventos que generó la música (build/score.json).
+// ============================================================================
+const W = 1080, H = 1920, FPS = 60, DUR = 15, CX = W / 2, CY = H / 2;
+const BEAT = 60 / 112, BAR = 4 * BEAT;
+const bt = b => b * BEAT;
+const C = {
+  bg: "#FAF5F2", ink: "#2B2427", coral: "#E54F4E", gray: "#6F6866",
+  tang: "#F8B414", tangHi: "#FFD15A", tangDeep: "#E98A06",
+  lime: "#CEF104", limeHi: "#EEFF7A", limeDeep: "#9CC400",
+};
+const PAL = {
+  orange: { frame: C.tang, hi: C.tangHi, deep: C.tangDeep, lens: ["#D9895E", "#EDC0A9", "#F3EEE9"], glare: .38 },
+  lime: { frame: C.lime, hi: C.limeHi, deep: C.limeDeep, lens: ["#3E2840", "#5A4C63", "#A9A7AD"], glare: .3 },
+};
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const E = {
+  outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t),
+  inExpo: t => t <= 0 ? 0 : Math.pow(2, 10 * t - 10),
+  inOutExpo: t => t <= 0 ? 0 : t >= 1 ? 1 : t < .5 ? Math.pow(2, 20 * t - 10) / 2 : (2 - Math.pow(2, -20 * t + 10)) / 2,
+  outCubic: t => 1 - Math.pow(1 - t, 3), inCubic: t => t * t * t,
+  inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  outBack: (t, s = 1.7) => 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2),
+  inBack: (t, s = 1.7) => (s + 1) * t * t * t - s * t * t,
+  outQuint: t => 1 - Math.pow(1 - t, 5),
+};
+const spring = (t, w = 18, z = .35) => t <= 0 ? 0 : 1 - Math.exp(-z * w * t) * Math.cos(w * Math.sqrt(1 - z * z) * t);
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+function hexRGB(h) { return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function mixHex(a, b, t) { const A = hexRGB(a), B = hexRGB(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(",")})`; }
+function rgba(h, a) { const [r, g, b] = hexRGB(h); return `rgba(${r},${g},${b},${clamp(a)})`; }
+
+// ---------------------------------------------------------------- partitura
+let SCORE = { events: [] };
+const byKind = {};
+function evs(kind) { return byKind[kind] || []; }
+function since(kind, t, f) { let s = Infinity; for (const e of evs(kind)) if (e.t <= t + 1e-9 && (!f || f(e))) s = t - e.t; return s; }
+function pulse(kind, t, decay = 9, f) { const s = since(kind, t, f); return s === Infinity ? 0 : Math.exp(-s * decay); }
+function countUpTo(kind, t) { let n = 0; for (const e of evs(kind)) if (e.t <= t + 1e-9) n++; return n; }
+
+// ---------------------------------------------------------------- lienzos
+const main = document.getElementById("c"), ctx = main.getContext("2d");
+function mk(w = W, h = H) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+const sub = mk(), sctx = sub.getContext("2d");
+const acc = mk(), actx = acc.getContext("2d");
+function bg(g, col) { g.fillStyle = col; g.fillRect(-60, -60, W + 120, H + 120); }
+
+// ---------------------------------------------------------------- anteojos
+const GPATH = (() => {
+  const frame = new Path2D(); polyPath(frame, GL.outerFull); polyPath(frame, GL.lensL); polyPath(frame, GL.lensR);
+  const outer = new Path2D(); polyPath(outer, GL.outerFull);
+  const lensL = new Path2D(); polyPath(lensL, GL.lensL);
+  const lensR = new Path2D(); polyPath(lensR, GL.lensR);
+  const len = pts => pts.reduce((a, p, i) => a + (i ? Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
+  return { frame, outer, lensL, lensR, lenOuter: len(GL.outerFull) + 20, lenLens: len(GL.lensL) + 10 };
+})();
+// radio del lente en función del ángulo (para morphear un disco en lente)
+const LENS_C = [-64, 4];
+const LENS_R = (() => {
+  const n = 180, out = [];
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
+    let best = 0;
+    const P = GL.lensL;
+    for (let j = 0; j < P.length; j++) {
+      const [x1, y1] = [P[j][0] - LENS_C[0], P[j][1] - LENS_C[1]], [x2, y2] = [P[(j + 1) % P.length][0] - LENS_C[0], P[(j + 1) % P.length][1] - LENS_C[1]];
+      const ex = x2 - x1, ey = y2 - y1, den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const s = (x1 * ey - y1 * ex) / den, u = (x1 * dy - y1 * dx) / den;
+      if (s > 0 && u >= 0 && u <= 1) best = Math.max(best, s);
+    }
+    out.push(best);
+  }
+  return out;
+})();
+function discLensPath(g, side, m, r0) {
+  // m=0: círculo de radio r0 · m=1: forma exacta del lente
+  const n = LENS_R.length, sgn = side < 0 ? 1 : -1;
+  g.beginPath();
+  for (let i = 0; i <= n; i++) {
+    const a = (i % n) / n * Math.PI * 2;
+    const r = lerp(r0, LENS_R[i % n], m);
+    const x = (LENS_C[0] + Math.cos(a) * r) * sgn, y = LENS_C[1] + Math.sin(a) * r;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.closePath();
+}
+function lensGradient(g, pal) {
+  const gr = g.createLinearGradient(0, -36, 0, 44);
+  gr.addColorStop(0, pal.lens[0]); gr.addColorStop(.5, pal.lens[1]); gr.addColorStop(1, pal.lens[2]);
+  return gr;
+}
+const SHADOW = (() => {
+  const c = mk(512, 128), g = c.getContext("2d");
+  const gr = g.createRadialGradient(256, 64, 0, 256, 64, 256);
+  gr.addColorStop(0, "rgba(120,80,80,0.30)"); gr.addColorStop(.5, "rgba(120,80,80,0.12)"); gr.addColorStop(1, "rgba(120,80,80,0)");
+  g.fillStyle = gr; g.setTransform(1, 0, 0, .25, 0, 48); g.fillRect(0, 0, 512, 512);
+  return c;
+})();
+// o: {x,y,s,pal, yaw, rot, sx, sy, sweep, alpha, shadow, lensOverride}
+function drawGlasses(g, o) {
+  const pal = o.pal, s = o.s, yaw = o.yaw || 0, cy = Math.cos(yaw), sy_ = Math.sin(yaw);
+  g.save();
+  g.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  g.translate(o.x, o.y);
+  if (o.shadow !== false) {
+    const w = 260 * s * Math.max(.4, Math.abs(cy)) * (o.sx || 1), h = 26 * s;
+    g.globalAlpha *= o.shadowA == null ? 1 : o.shadowA;
+    g.drawImage(SHADOW, -w / 2, 52 * s - h / 2 + (o.shadowDy || 0), w, h);
+    g.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  }
+  g.rotate(o.rot || 0);
+  g.scale(o.sx || 1, o.sy || 1);
+  // patillas (detrás del frente), proyectadas en 3D simple
+  if (Math.abs(yaw) > .02) {
+    for (const side of [-1, 1]) {
+      const pts = [[116 * side, -38, 0], [114 * side, -34, 120], [112 * side, -30, 230], [111 * side, -14, 262]];
+      const proj = pts.map(([x, y, z]) => {
+        const X = x * cy + z * sy_, Z = -x * sy_ + z * cy, k = 900 / (900 + Z);
+        return [X * k * s, y * k * s];
+      });
+      g.strokeStyle = pal.deep; g.lineCap = "round"; g.lineJoin = "round"; g.lineWidth = 7.5 * s;
+      g.beginPath(); proj.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke();
+      g.strokeStyle = pal.frame; g.lineWidth = 4.5 * s; g.stroke();
+    }
+  }
+  g.scale(s * cy, s);
+  // lentes
+  for (const [lp, side] of [[GPATH.lensL, -1], [GPATH.lensR, 1]]) {
+    const ov = o.lensOverride && o.lensOverride(side);
+    if (ov) { ov(g); continue; }
+    g.fillStyle = lensGradient(g, pal); g.fill(lp);
+    // reflejo: banda diagonal que barre + brillo fijo
+    g.save(); g.clip(lp);
+    g.fillStyle = `rgba(255,255,255,${pal.glare * .35})`;
+    g.beginPath(); g.ellipse(side * 64 - 22, -18, 26, 10, -.35, 0, Math.PI * 2); g.fill();
+    if (o.sweep != null && o.sweep > -1 && o.sweep < 2) {
+      const sx = lerp(-150, 150, o.sweep);
+      g.translate(sx, 0); g.rotate(.5);
+      g.fillStyle = `rgba(255,255,255,${pal.glare})`; g.fillRect(-9, -120, 18, 240);
+      g.fillStyle = `rgba(255,255,255,${pal.glare * .5})`; g.fillRect(14, -120, 6, 240);
+    }
+    g.restore();
+  }
+  // montura de acetato
+  const fg = g.createLinearGradient(0, -48, 0, 46);
+  fg.addColorStop(0, pal.hi); fg.addColorStop(.28, pal.frame); fg.addColorStop(.8, pal.frame); fg.addColorStop(1, pal.deep);
+  g.fillStyle = fg; g.fill(GPATH.frame, "evenodd");
+  g.lineJoin = "round";
+  g.strokeStyle = rgba(pal.deep, .75); g.lineWidth = 2.2; g.stroke(GPATH.lensL); g.stroke(GPATH.lensR);
+  g.strokeStyle = rgba(pal.deep, .45); g.lineWidth = 1.2; g.stroke(GPATH.outer);
+  // bisagras vistas a través del acetato
+  g.fillStyle = rgba(pal.deep, .55);
+  for (const side of [-1, 1]) { g.beginPath(); g.roundRect(side < 0 ? -117 : 108, -37, 9, 16, 3); g.fill(); }
+  // brillo especular en la ceja
+  g.strokeStyle = "rgba(255,255,255,.55)"; g.lineCap = "round"; g.lineWidth = 2.4;
+  for (const side of [-1, 1]) {
+    g.beginPath();
+    [[-104, -42.5], [-80, -42.5], [-58, -40.4], [-42, -37.4]].forEach(([x, y], i) => i ? g.lineTo(x * -side * -1, y) : g.moveTo(x * -side * -1, y));
+    g.stroke();
+  }
+  g.restore();
+}
+
+// ---------------------------------------------------------------- TUPÉ
+const TP = {}; for (const k of TUPE.order) TP[k] = tupePath(k);
+// cada pieza: punto de apoyo (para el squash) y desde dónde llega
+const PIECE_FX = {
+  bar: { from: [-160, 0], anchor: [41, 1.7], axis: "x" },
+  tStem: { from: [0, -120], anchor: [17, 30] },
+  u: { from: [0, 120], anchor: [45, 0] },
+  pStem: { from: [0, -120], anchor: [67, 30] },
+  pBowl: { from: [140, 0], anchor: [75.6, 20.8], roll: 10.4 },
+  eDome: { scale: true, anchor: [102.8, 21] },
+  eStem: { from: [-90, 0], anchor: [99, 25], axis: "x" },
+  accent: { from: [0, -150], anchor: [103.5, -0.6] },
+};
+// dibuja el logo con piezas que llegan en los tiempos `times` (impacto exacto en el golpe)
+function drawTupe(g, x, y, s, times, t, o = {}) {
+  g.save(); g.translate(x, y); g.scale(s, s * 1.025);
+  TUPE.order.forEach((k, i) => {
+    const tp = times[i], fx = PIECE_FX[k];
+    const pre = o.pre || .16;
+    if (t < tp - pre) return;
+    g.save();
+    let dx = 0, dy = 0, rot = 0, sc = 1;
+    if (t < tp) {
+      const q = E.inCubic(prog(t, tp - pre, tp));          // acelera hacia el golpe
+      if (fx.scale) sc = q; else { dx = fx.from[0] * (1 - q) * (o.dist || 1); dy = fx.from[1] * (1 - q) * (o.dist || 1); }
+      if (fx.roll) rot = -dx / fx.roll;
+    }
+    const d = t >= tp ? Math.exp(-(t - tp) * 11) * Math.cos((t - tp) * 30) : 0;   // rebote amortiguado tras el impacto
+    const [ax, ay] = fx.anchor;
+    g.translate(dx, dy);
+    g.translate(ax, ay);
+    g.rotate(rot);
+    if (fx.axis === "x") g.scale(1 - .22 * d, 1 + .12 * d);
+    else g.scale((1 + .16 * d) * sc, (1 - .24 * d) * sc);
+    g.translate(-ax, -ay);
+    g.fillStyle = k === "accent" ? (o.accentCol || C.tang) : (o.col || C.ink);
+    g.fill(TP[k]);
+    g.restore();
+  });
+  if (t >= times[times.length - 1]) {
+    const a = E.outCubic(prog(t, times[times.length - 1], times[times.length - 1] + .25));
+    g.globalAlpha = a;
+    drawCopyright(g, 123.5, 3.2, 4.2, .85, o.col || C.ink);
+  }
+  g.restore();
+}
+function sparkleStar(g, x, y, r, col, rot = 0) {
+  g.save(); g.translate(x, y); g.rotate(rot); g.fillStyle = col;
+  g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, rr = i % 2 ? r * .22 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  g.closePath(); g.fill(); g.restore();
+}
+
+// ---------------------------------------------------------------- texto
+function fitFont(g, fam, txt, maxW, px) { g.font = `${px}px ${fam}`; const w = g.measureText(txt).width; return w > maxW ? px * maxW / w : px; }
+// palabra que sube desde una máscara (golpe exacto en tb)
+function riseWord(g, txt, x, y, px, fam, col, tb, t, o = {}) {
+  if (t < tb - (o.pre || 0)) return;
+  g.save();
+  g.font = `${px}px ${fam}`;
+  const m = g.measureText(txt), w = m.width, asc = m.actualBoundingBoxAscent;
+  const al = o.align || "center";
+  const x0 = al === "center" ? x - w / 2 : x;
+  g.beginPath(); g.rect(x0 - 40, y - asc - 30, w + 80, asc + 30 + px * .3); g.clip();
+  const sp = spring(t - tb, 22, .42);
+  const out = o.out != null && t > o.out ? E.inCubic(prog(t, o.out, o.out + .22)) : 0;
+  g.fillStyle = col;
+  g.fillText(txt, x0, y + (1 - sp) * (asc + 40) - out * (asc + 60));
+  g.restore();
+}
+
+// ============================================================================
+//  ESCENAS
+// ============================================================================
+const GX = CX, GY = 1000, GS = 3.6;        // posición del héroe
+const HEADER_Y = 300;
+
+function header(g, t, col) {
+  // firma de marca arriba, escrita durante el primer compás
+  const p = E.inOutCubic(prog(t, .05, bt(3.6)));
+  const s = 3.0, w = SIGN.w * s;
+  const out = prog(t, bt(11.75), bt(12.2));
+  if (out >= 1) return;
+  g.save(); g.globalAlpha = 1 - out;
+  drawSignature(g, CX - w / 2, HEADER_Y - 13 * s, s, p, col);
+  g.restore();
+}
+
+// ---- 1 · dos discos, la línea dibuja la montura, el acetato se llena (0 → 4)
+function s1(g, t) {
+  bg(g, C.bg);
+  header(g, t, C.coral);
+  const k = pulse("kick", t, 10) + pulse("disc", t, 10) * .6;
+  const fillT = bt(3);
+  const drawP = E.inOutCubic(prog(t, bt(2), bt(3)));
+  const morph = E.inOutCubic(prog(t, bt(2) + .05, bt(3) - .02));
+  const yb = GY - 14 * k;
+  g.save(); g.translate(GX, yb); g.scale(GS, GS);
+  // discos (antes de que exista la montura)
+  const discs = [[-1, 0, C.tang], [1, 1, C.lime]];
+  for (const [side, i, col] of discs) {
+    const tb = bt(i);
+    if (t < tb) continue;
+    const pop = spring(t - tb, 16, .3);
+    const r0 = 37 * pop;
+    g.save();
+    g.fillStyle = col;
+    discLensPath(g, side, morph, r0);
+    g.fill();
+    g.restore();
+  }
+  // montura dibujándose
+  if (drawP > 0) {
+    g.lineWidth = 2.4 / 1; g.strokeStyle = C.ink; g.lineJoin = "round"; g.lineCap = "round";
+    g.setLineDash([GPATH.lenOuter * drawP, GPATH.lenOuter]); g.stroke(GPATH.outer);
+    g.setLineDash([GPATH.lenLens * drawP, GPATH.lenLens]); g.stroke(GPATH.lensL); g.stroke(GPATH.lensR);
+    g.setLineDash([]);
+  }
+  g.restore();
+  // relleno: círculo que se abre desde el puente en el golpe de palmas
+  if (t >= fillT - .001) {
+    const r = E.outExpo(prog(t, fillT, fillT + .32)) * 900;
+    g.save();
+    g.beginPath(); g.arc(GX, yb, r, 0, Math.PI * 2); g.clip();
+    bg(g, C.bg); header(g, t, C.coral);
+    heroGlasses(g, t, PAL.orange, { y: yb });
+    g.restore();
+  }
+}
+function heroGlasses(g, t, pal, o = {}) {
+  const k = pulse("kick", t, 9);
+  const fill = pulse("fill", t, 7);
+  drawGlasses(g, {
+    x: o.x == null ? GX : o.x, y: (o.y == null ? GY - 12 * k : o.y), s: GS * (1 + .06 * fill) * (o.scale || 1), pal,
+    sx: 1 + .03 * k, sy: 1 - .04 * k, rot: o.rot || 0, yaw: o.yaw || 0,
+    sweep: o.sweep, shadowA: 1 - .4 * k, lensOverride: o.lensOverride,
+  });
+}
+
+// ---- 2 · "MIRÁ EL / VERANO" (4 → 8)
+const L1Y = 720, L2Y = 1440;
+function wordsS2(g, t, col) {
+  const out = bt(8);
+  g.font = "200px IDBlack";
+  const px = fitFont(g, "IDBlack", "MIRÁ EL", 960, 205);
+  g.font = `${px}px IDBlack`;
+  const wM = g.measureText("MIRÁ ").width, wE = g.measureText("EL").width, tot = wM + wE;
+  riseWord(g, "MIRÁ", CX - tot / 2, L1Y, px, "IDBlack", col, bt(4), t, { align: "left", out });
+  riseWord(g, "EL", CX - tot / 2 + wM, L1Y, px, "IDBlack", col, bt(5), t, { align: "left", out });
+  const px2 = fitFont(g, "IDBlack", "VERANO", 960, 215);
+  riseWord(g, "VERANO", CX, L2Y, px2, "IDBlack", col, bt(6), t, { out });
+}
+function s2(g, t) {
+  bg(g, C.bg);
+  header(g, t, C.coral);
+  wordsS2(g, t, C.ink);
+  // el golpe de palmas (negra 7) barre un brillo por los lentes
+  const sw = since("clap", t);
+  heroGlasses(g, t, PAL.orange, { sweep: sw < .6 ? sw / .45 : null });
+  sparkles(g, t);
+}
+// destellos diminutos en el acetato con cada shaker a contratiempo
+function sparkles(g, t) {
+  for (const e of evs("shake")) {
+    const d = t - e.t; if (d < 0 || d > .28 || e.t < bt(4) || e.t > bt(15)) continue;
+    const i = Math.round(e.b * 4);
+    const side = i % 2 ? 1 : -1;
+    const px = GX + side * (40 + hash(i) * 330), py = GY - 150 + hash(i + 7) * 40;
+    const a = Math.sin(Math.PI * d / .28);
+    sparkleStar(g, px, py, 18 * a, "rgba(255,255,255,.95)", d * 3);
+  }
+}
+
+// ---- 3 · "EN OTRO / COLOR." · cambio de color en cada golpe (8 → 12)
+const SWAPS = () => evs("kick").filter(e => e.b >= 8 && e.b < 12).map(e => e.t).concat(evs("note").filter(e => e.b > 11 && e.b < 12).map(e => e.t)).sort((a, b) => a - b);
+function stateS3(g, t, dark) {
+  bg(g, dark ? C.ink : C.bg);
+  header(g, t, C.coral);
+  const col = dark ? C.bg : C.ink;
+  // palabras: ruedan desde abajo en la negra 8
+  const px = fitFont(g, "IDBlack", "EN OTRO", 960, 205);
+  riseWord(g, "EN OTRO", CX, L1Y, px, "IDBlack", col, bt(8), t);
+  g.font = `${fitFont(g, "IDBlack", "COLOR.", 960, 230)}px IDBlack`;
+  const px2 = fitFont(g, "IDBlack", "COLOR.", 960, 230);
+  riseWord(g, "COLOR", CX - g.measureText(".").width / 2, L2Y, px2, "IDBlack", col, bt(8.5), t);
+  g.font = `${px2}px IDBlack`;
+  const wC = g.measureText("COLOR").width, wTot = g.measureText("COLOR.").width;
+  riseWord(g, ".", CX - wTot / 2 + wC, L2Y, px2, "IDBlack", dark ? C.lime : C.tang, bt(8.5) + .05, t, { align: "left" });
+  heroGlasses(g, t, dark ? PAL.lime : PAL.orange);
+  sparkles(g, t);
+}
+function s3(g, t) {
+  const sw = SWAPS();
+  let n = 0; for (const s of sw) if (s <= t + 1e-9) n++;
+  const cur = n % 2 === 1, prev = !cur;          // impar = oscuro/lima
+  if (n === 0) { stateS3(g, t, false); return; }
+  const ts = sw[n - 1];
+  const p = E.outExpo(prog(t, ts, ts + .2));
+  if (p < 1) stateS3(g, t, prev);
+  const side = n % 2 ? -1 : 1;
+  const cx = GX + side * 250, cy = GY;
+  g.save();
+  g.beginPath(); g.arc(cx, cy, p * 1500, 0, Math.PI * 2); g.clip();
+  stateS3(g, t, cur);
+  g.restore();
+}
+
+// ---- 4 · producto en 3D sobre tinta, etiquetas con cada nota (12 → 16)
+const CALLOUTS = [
+  { id: "c1", txt: "ACETATO", sub: "TRASLÚCIDO", anchor: [-70, -44], at: [150, 560], align: "left" },
+  { id: "c2", txt: "LENTE", sub: "DEGRADÉ", anchor: [60, 20], at: [930, 1400], align: "right" },
+  { id: "c3", txt: "CAT-EYE", sub: "", anchor: [116, -46], at: [930, 620], align: "right" },
+];
+function s4(g, t) {
+  bg(g, C.ink);
+  const u = t - bt(12);
+  const turn = spring(u, 7, .45);
+  const yaw = .55 * turn - .75 * E.inOutCubic(prog(t, bt(13.6), bt(15.2)));
+  const push = E.inExpo(prog(t, bt(15.1), bt(16)));
+  const s = GS * (1 + .1 * E.outCubic(prog(t, bt(12), bt(15))) + push * 30);
+  // al final la cámara entra en el lente derecho
+  const lensX = 64 * s * Math.cos(yaw), tx = GX - lensX * push * .98;
+  const k = pulse("kick", t, 9);
+  const sw = since("riser", t);
+  drawGlasses(g, { x: tx, y: GY - 10 * k - 4 * s * push, s, pal: PAL.lime, yaw, sweep: sw < 1.2 ? sw / .9 : null, shadow: push < .05, sx: 1, sy: 1 - .03 * k });
+  // etiquetas
+  const fade = 1 - prog(t, bt(15.0), bt(15.4));
+  for (const c of CALLOUTS) {
+    const e = evs("callout").find(e => e.id === c.id); if (!e || t < e.t) continue;
+    const a = E.outExpo(prog(t, e.t, e.t + .35)) * fade;
+    if (a <= 0) continue;
+    const ax = tx + c.anchor[0] * s * Math.cos(yaw), ay = GY + c.anchor[1] * s;
+    const ex = lerp(ax, c.at[0], a), ey = lerp(ay, c.at[1], a);
+    g.save(); g.globalAlpha = fade;
+    g.strokeStyle = C.bg; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(ax, ay); g.lineTo(ex, ey); g.stroke();
+    g.fillStyle = C.lime; g.beginPath(); g.arc(ax, ay, 9 * a, 0, Math.PI * 2); g.fill();
+    g.fillStyle = C.bg;
+    g.textAlign = c.align;
+    g.font = "58px IDBlack"; g.letterSpacing = "2px";
+    const yy = ey + (c.at[1] < GY ? -26 : 70);
+    g.save(); g.beginPath(); g.rect(0, yy - 70, W, 160); g.clip();
+    g.fillText(c.txt, ex, yy + (1 - spring(t - e.t, 20, .45)) * 80);
+    if (c.sub) { g.font = "40px IDLight"; g.letterSpacing = "6px"; g.fillText(c.sub, ex, yy + 52 + (1 - spring(t - e.t - .05, 20, .45)) * 80); }
+    g.restore();
+    g.restore();
+  }
+}
+
+// ---- 5 · DROP: el logo TUPÉ se arma pieza por pieza en corcheas (16 → 20)
+const LOGO_S = 7.1, LOGO_X = CX - 63.5 * LOGO_S, LOGO_Y = 900 - 9.5 * LOGO_S;
+function pieceTimes() { return evs("piece").map(e => e.t); }
+function s5(g, t) {
+  bg(g, C.bg);
+  const k = pulse("kick", t, 10);
+  const sp = pulse("sparkle", t, 3);
+  // soles de fondo: los dos colores de la colección, laten con el bombo
+  const u = t - bt(16);
+  // un sol naranja detrás del acento y uno lima abajo a la izquierda (entran con impacto y bombo)
+  for (const [i, col, x, y, r0] of [[0, C.tang, CX + 300, 1090, 240], [1, C.lime, CX - 330, 640, 175]]) {
+    const a = spring(u - i * BEAT * .5, 12, .4);
+    const r = r0 * a * (1 + .04 * k);
+    g.fillStyle = col;
+    g.beginPath(); g.arc(x + Math.sin(u * 1.3 + i) * 12, y + Math.cos(u * 1.1 + i) * 12, Math.max(0, r), 0, Math.PI * 2); g.fill();
+  }
+  const s = LOGO_S * (1 + .012 * k);
+  drawTupe(g, CX - 63.5 * s, 900 - 9.5 * s, s, pieceTimes(), t, { accentCol: C.tang });
+  // destello sobre el acento
+  if (sp > .02) burst(g, CX + (103.5 - 63.5) * s, 900 + (-6 - 9.5) * s, since("sparkle", t));
+  // flash del drop
+  const fl = 1 - E.outExpo(prog(u, 0, .25));
+  if (fl > 0) { g.fillStyle = `rgba(255,255,255,${fl})`; g.fillRect(0, 0, W, H); }
+}
+function burst(g, x, y, d) {
+  const cols = [C.tang, C.lime, C.coral, C.tang, C.lime, C.coral, C.tang, C.lime];
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2 + .3, r = 40 + E.outExpo(clamp(d / .5)) * 150;
+    const sz = 22 * Math.max(0, 1 - d / .7);
+    if (sz <= 0) continue;
+    sparkleStar(g, x + Math.cos(a) * r, y + Math.sin(a) * r, sz, cols[i], d * 4);
+  }
+}
+
+// ---- 6 · key visual: naranja arriba, lima abajo, firma escrita a mano (20 → 24)
+const KV = { top: 640, bot: 1290, s: 3.3, signS: 4.7, signY: 965 };
+function signProgress(t) {
+  const ev = evs("stroke");
+  let p = 0;
+  for (let i = 0; i < ev.length; i++) {
+    const t0 = ev[i].t, t1 = i + 1 < ev.length ? ev[i + 1].t : t0 + .4;
+    p += E.outCubic(prog(t, t0, t0 + Math.min(.3, t1 - t0))) / ev.length;
+  }
+  return p;
+}
+function s6(g, t) {
+  bg(g, C.bg);
+  const k = pulse("kick", t, 9);
+  const sl = evs("slide");
+  for (const [i, pal, y, dir] of [[0, PAL.orange, KV.top, -1], [1, PAL.lime, KV.bot, 1]]) {
+    const e = sl[i]; const tt = e ? e.t : bt(20 + i);
+    const sp = spring(t - tt + .1, 13, .42);
+    const x = CX + dir * (1 - sp) * 1100;
+    const bob = (i === 0 ? k : pulse("clap", t, 9)) * 10;
+    drawGlasses(g, { x, y: y - bob, s: KV.s, pal, rot: dir * (1 - sp) * .25, sweep: since("stroke", t) < .5 && i === 1 ? since("stroke", t) / .5 : null });
+  }
+  const p = signProgress(t);
+  const w = SIGN.w * KV.signS;
+  drawSignature(g, CX - w / 2, KV.signY - 15 * KV.signS, KV.signS, p, C.coral);
+  if (p > 0 && p < 1) {
+    const [px, py] = signatureTip(p);
+    const gx = CX - w / 2 + px * KV.signS, gy = KV.signY - 15 * KV.signS + py * KV.signS;
+    sparkleStar(g, gx, gy, 16 + 6 * pulse("stroke", t, 12), C.tang, t * 6);
+  }
+}
+
+// ---- 7 · cierre: TUPÉ + llamada a la acción (24 → 28)
+const EC = { logoS: 6.3, logoY: 930 };
+function s7(g, t) {
+  bg(g, C.bg);
+  const u = t - bt(24);
+  const out = E.outExpo(prog(u, 0, .5));
+  // los anteojos salen por arriba y por abajo; la firma baja a firmar el cierre
+  if (out < 1) {
+    drawGlasses(g, { x: CX, y: KV.top - out * 1200, s: KV.s, pal: PAL.orange, rot: -out * .3 });
+    drawGlasses(g, { x: CX, y: KV.bot + out * 1200, s: KV.s, pal: PAL.lime, rot: out * .3 });
+  }
+  const m = E.outExpo(prog(u, 0, .4));
+  const ss = lerp(KV.signS, 2.9, m), sy = lerp(KV.signY, 1560, m);
+  drawSignature(g, CX - SIGN.w * ss / 2, sy - 15 * ss, ss, 1, C.coral);
+  // logo
+  const s = EC.logoS * (1 + .015 * pulse("kick", t, 10) + .04 * pulse("sparkle", t, 5));
+  const tt = [0, 1, 2, 3, 4, 5, 6, 7].map(i => bt(24) + .12 + i * .045);
+  drawTupe(g, CX - 63.5 * s, EC.logoY - 9.5 * s, s, tt, t, { accentCol: C.tang, pre: .14, dist: 1.6 });
+  // textos (como la pieza oficial)
+  const ln = evs("line");
+  const t1 = ln[0] ? ln[0].t : bt(25), t2 = ln[1] ? ln[1].t : bt(26);
+  g.save();
+  g.textAlign = "center";
+  const a1 = E.outCubic(prog(t, t1, t1 + .35));
+  g.globalAlpha = a1; g.fillStyle = C.gray; g.font = "64px IDLight";
+  g.fillText("encontrá", CX + 6, EC.logoY - 140 + (1 - a1) * 30);
+  const url = "en carladisi.com/tupe";
+  g.globalAlpha = 1; g.font = "60px IDLight";
+  const n = Math.floor(clamp((t - t2) / .38) * url.length);
+  g.fillText(url.slice(0, n), CX, EC.logoY + 205);
+  // subrayado que se dibuja después
+  const ul = E.inOutCubic(prog(t, t2 + .4, t2 + .75));
+  if (ul > 0) { const w = g.measureText(url).width; g.fillStyle = C.coral; g.fillRect(CX - w / 2, EC.logoY + 228, w * ul, 4); }
+  g.restore();
+  const d = since("sparkle", t);
+  if (d < .8) burst(g, CX + (103.5 - 63.5) * s, EC.logoY + (-6 - 9.5) * s, d);
+}
+
+// ============================================================================
+//  LÍNEA DE TIEMPO
+// ============================================================================
+function drawScene(g, t) {
+  g.save();
+  const imp = Math.exp(-Math.max(0, t - bt(16)) * 9) * (t >= bt(16) ? 1 : 0) + Math.exp(-Math.max(0, t - bt(24)) * 10) * (t >= bt(24) ? .6 : 0);
+  if (imp > .01) g.translate(Math.sin(t * 91) * 14 * imp, Math.cos(t * 77) * 14 * imp);
+  const b = t / BEAT;
+  if (b < 4) s1(g, t);
+  else if (b < 8) s2(g, t);
+  else if (b < 12) s3(g, t);
+  else if (b < 16) s4(g, t);
+  else if (b < 19.7) s5(g, t);
+  else if (b < 20.4) {
+    // latigazo vertical: el logo sale por arriba, el key visual entra desde abajo
+    const p = E.inOutExpo(prog(t, bt(19.72), bt(20.32)));
+    g.save(); g.translate(0, -p * H); s5(g, t); g.restore();
+    g.save(); g.translate(0, (1 - p) * H); s6(g, t); g.restore();
+  }
+  else if (b < 24) s6(g, t);
+  else s7(g, t);
+  g.restore();
+}
+
+// ============================================================================
+//  RENDER: motion blur real (sub-frames) que nunca cruza un corte
+// ============================================================================
+const CUTS = [bt(16)];
+function subframesAt(t) {
+  const b = t / BEAT;
+  // los barridos circulares crecen ~1500 px en 0,2 s: necesitan muchas muestras para no dejar anillos
+  for (const s of SWAPS()) if (t >= s - .01 && t < s + .16) return 40;
+  if (since("fill", t) < .2) return 32;
+  const fast = [[3, 3.6], [7.95, 12], [15, 16.5], [19.6, 20.5], [21, 21.3], [24, 24.8], [16, 16.3]];
+  for (const [a, z] of fast) if (b >= a && b <= z) return 14;
+  return 6;
+}
+const SHUTTER = .5;     // 180°
+let grain = null;
+function initGrain() {
+  grain = [];
+  let seed = 9; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 6; k++) {
+    const c = mk(256, 256), g = c.getContext("2d"), im = g.createImageData(256, 256);
+    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (rnd() + rnd() - 1) * 110; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    g.putImageData(im, 0, 0); grain.push(ctx.createPattern(c, "repeat"));
+  }
+}
+function renderFrame(f, opts = {}) {
+  const t0 = f / FPS;
+  const sf = opts.subframes || subframesAt(t0);
+  for (let i = 0; i < sf; i++) {
+    let t = clamp(t0 + (sf === 1 ? 0 : (i / (sf - 1) - .5) * SHUTTER / FPS), 0, DUR - 1e-4);
+    for (const c of CUTS) { if (t0 >= c && t < c) t = c; if (t0 < c && t >= c) t = c - 1e-4; }
+    sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.globalAlpha = 1; sctx.globalCompositeOperation = "source-over";
+    drawScene(sctx, t);
+    actx.globalCompositeOperation = i === 0 ? "copy" : "source-over";
+    actx.globalAlpha = 1 / (i + 1);
+    actx.drawImage(sub, 0, 0);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = "copy"; ctx.drawImage(acc, 0, 0);
+  ctx.globalCompositeOperation = "soft-light"; ctx.globalAlpha = .1;
+  ctx.fillStyle = grain[f % grain.length];
+  const ox = Math.floor(hash(f) * 256), oy = Math.floor(hash(f + 3) * 256);
+  ctx.translate(ox, oy); ctx.fillRect(-ox, -oy, W, H);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+}
+async function init(score) {
+  SCORE = score;
+  for (const e of SCORE.events) (byKind[e.kind] = byKind[e.kind] || []).push(e);
+  await Promise.all(["IDBlack", "IDLight", "IDXLight", "IDMedium", "IDSemi"].map(f => document.fonts.load(`100px ${f}`)));
+  initGrain();
+  window.READY = true;
+}
+window.init = init; window.renderFrame = renderFrame;
+</script>
+</body>
+</html>
