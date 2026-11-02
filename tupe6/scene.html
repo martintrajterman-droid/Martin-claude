@@ -1,0 +1,505 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TUPÉ · Fábrica</title>
+<style>
+  @font-face { font-family: "IDBlack"; src: local("Inter Display Black"), local("InterDisplay-Black"); }
+  @font-face { font-family: "IDLight"; src: local("Inter Display Light"), local("InterDisplay-Light"); }
+  @font-face { font-family: "IDMedium"; src: local("Inter Display Medium"), local("InterDisplay-Medium"); }
+  @font-face { font-family: "IDSemi"; src: local("Inter Display SemiBold"), local("InterDisplay-SemiBold"); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; height: 100vh; width: auto; margin: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script src="brand.js"></script>
+<script>
+"use strict";
+// ============================================================================
+//  TUPÉ · "Mirá el verano con otro color" — versión FÁBRICA · 20 s · 1080×1920 · 60 fps
+//  La fábrica es gris. El láser corta la plancha de acetato y, donde corta, aparece el color.
+// ============================================================================
+const W = 1080, H = 1920, FPS = 60, DUR = 20, CX = W / 2, CY = H / 2;
+const BEAT = 60 / 144, bt = b => b * BEAT;
+const C = { bg: "#FAF5F2", ink: "#2B2427", coral: "#E54F4E", gray: "#6F6866", tang: "#F8B414" };
+const NAMES = ["violeta", "caramelo", "fluo", "gris", "nude"];
+const ORDER = ["caramelo", "fluo", "violeta", "gris", "nude"];        // orden de corte
+const LABEL = { violeta: "lab001 · violeta", caramelo: "lab002 · caramelo", fluo: "lab002 · verde flúo", gris: "lab002 · gris", nude: "lab001 · nude" };
+const ACC = { caramelo: "#F08A1C", fluo: "#CFF21E", violeta: "#7B3FA6", gris: "#CFC6B8", nude: "#C08A72" };
+const SHEET = { x: 70, y: 300, w: 940, h: 1340 };
+const PIECE = { x: CX, y: 1160, s: 3.8 };
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const E = {
+  outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t), inExpo: t => t <= 0 ? 0 : Math.pow(2, 10 * t - 10),
+  inOutExpo: t => t <= 0 ? 0 : t >= 1 ? 1 : t < .5 ? Math.pow(2, 20 * t - 10) / 2 : (2 - Math.pow(2, -20 * t + 10)) / 2,
+  outCubic: t => 1 - Math.pow(1 - t, 3), inCubic: t => t * t * t,
+  inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+};
+const spring = (t, w = 18, z = .35) => t <= 0 ? 0 : 1 - Math.exp(-z * w * t) * Math.cos(w * Math.sqrt(1 - z * z) * t);
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const rgba = (h, a) => { const [r, g, b] = hexRGB(h); return `rgba(${r},${g},${b},${clamp(a)})`; };
+
+// ---------------------------------------------------------------- partitura
+const byKind = {};
+const evs = k => byKind[k] || [];
+function since(kind, t, f) { let s = Infinity; for (const e of evs(kind)) if (e.t <= t + 1e-9 && (!f || f(e))) s = t - e.t; return s; }
+function pulse(kind, t, decay = 9, f) { const s = since(kind, t, f); return s === Infinity ? 0 : Math.exp(-s * decay); }
+
+// ---------------------------------------------------------------- lienzos
+const main = document.getElementById("c"), ctx = main.getContext("2d");
+const mk = (w = W, h = H) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+const sub = mk(), sctx = sub.getContext("2d"), acc = mk(), actx = acc.getContext("2d");
+const IMG = {}; let META = null, BED = null;
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+function bg(g, c) { g.fillStyle = c; g.fillRect(-60, -60, W + 120, H + 120); }
+function drawPair(g, name, x, y, w, rot = 0, alpha = 1) {
+  const m = META[name], s = w / m.w;
+  g.save(); g.globalAlpha *= alpha; g.translate(x, y); g.rotate(rot); g.scale(s, s);
+  g.drawImage(IMG["full_" + name], -m.w / 2, -m.h / 2); g.restore();
+}
+function riseWord(g, txt, x, y, px, fam, color, tb, t, o = {}) {
+  if (t < tb) return;
+  g.save(); g.font = `${px}px ${fam}`; if (o.ls) g.letterSpacing = o.ls;
+  const m = g.measureText(txt), w = m.width, asc = m.actualBoundingBoxAscent;
+  const x0 = (o.align || "center") === "center" ? x - w / 2 : x;
+  g.beginPath(); g.rect(x0 - 60, y - asc - 40, w + 120, asc + 40 + px * .32); g.clip();
+  const sp = spring(t - tb, 22, .42), yy = y + (1 - sp) * (asc + 50);
+  if (o.shadow) { g.shadowColor = o.shadow; g.shadowOffsetX = 8; g.shadowOffsetY = 12; }
+  g.fillStyle = color; g.fillText(txt, x0, yy);
+  g.restore();
+}
+function sparkleStar(g, x, y, r, color, rot = 0) {
+  g.save(); g.translate(x, y); g.rotate(rot); g.fillStyle = color; g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, rr = i % 2 ? r * .22 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  g.closePath(); g.fill(); g.restore();
+}
+
+// ============================================================================
+//  GEOMETRÍA DEL CORTE: contorno cat-eye (de brand.js) recorrido por el cabezal
+// ============================================================================
+const CUT_PATHS = [GL.outerFull, GL.lensL, GL.lensR].map(pts => {
+  const P = [...pts, pts[0]]; const cum = [0];
+  for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  return { P, cum, len: cum[cum.length - 1] };
+});
+const CUT_TOTAL = CUT_PATHS.reduce((a, p) => a + p.len, 0);
+function cutPoint(d) {      // punto a distancia d del total (en unidades del contorno)
+  for (const p of CUT_PATHS) {
+    if (d <= p.len) {
+      let i = 1; while (i < p.cum.length - 1 && p.cum[i] < d) i++;
+      const a = (d - p.cum[i - 1]) / Math.max(1e-6, p.cum[i] - p.cum[i - 1]);
+      return [lerp(p.P[i - 1][0], p.P[i][0], a), lerp(p.P[i - 1][1], p.P[i][1], a)];
+    }
+    d -= p.len;
+  }
+  const l = CUT_PATHS[2].P; return l[l.length - 1];
+}
+function strokeCut(g, d) {   // traza el corte hasta d
+  let rem = d;
+  for (const p of CUT_PATHS) {
+    if (rem <= 0) break;
+    g.beginPath(); g.moveTo(p.P[0][0], p.P[0][1]);
+    for (let i = 1; i < p.P.length; i++) {
+      if (p.cum[i] <= rem) g.lineTo(p.P[i][0], p.P[i][1]);
+      else { const a = (rem - p.cum[i - 1]) / (p.cum[i] - p.cum[i - 1]); g.lineTo(lerp(p.P[i - 1][0], p.P[i][0], a), lerp(p.P[i - 1][1], p.P[i][1], a)); break; }
+    }
+    g.stroke(); rem -= p.len;
+  }
+}
+const FRAME_PATH = (() => { const p = new Path2D(); polyPath(p, GL.outerFull); polyPath(p, GL.lensL); polyPath(p, GL.lensR); return p; })();
+const OUTER_PATH = (() => { const p = new Path2D(); polyPath(p, GL.outerFull); return p; })();
+
+// chispas: nacen en el cabezal, salen disparadas y se apagan (todo función de t)
+function sparks(g, t, headAt, t0, t1, seed, colr = "#FFD27A") {
+  g.save(); g.globalCompositeOperation = "lighter";
+  const step = .008;
+  for (let tb = Math.max(t0, t - .35); tb <= Math.min(t, t1); tb += step) {
+    const k = Math.round(tb / step);
+    const [hx, hy] = headAt(k * step);
+    for (let j = 0; j < 2; j++) {
+      const r1 = hash(k * 7.1 + j * 3.3 + seed), r2 = hash(k * 2.7 + j * 9.1 + seed);
+      const ang = r1 * Math.PI * 2, sp = 300 + r2 * 900, age = t - k * step;
+      if (age < 0) continue;
+      const d = sp * (1 - Math.exp(-age * 5)) / 5;
+      const x = hx + Math.cos(ang) * d, y = hy + Math.sin(ang) * d + 120 * age * age;
+      const a = clamp(1 - age / .35);
+      g.strokeStyle = rgba(colr, a); g.lineWidth = 2.5 * a + .5;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - Math.cos(ang) * 18 * a, y - Math.sin(ang) * 18 * a); g.stroke();
+    }
+  }
+  g.restore();
+}
+
+// ============================================================================
+//  FÁBRICA
+// ============================================================================
+function lightsLevel(t) {
+  const L = evs("lights")[0]; if (!L) return 1;
+  if (t < L.t - .35) return .05;
+  // arranque de tubo fluorescente: parpadeos antes de quedar fijo
+  const u = t - (L.t - .35);
+  const fl = [[0, .05, .8], [.05, .1, .1], [.1, .16, .9], [.16, .24, .2], [.24, .35, 1]];
+  for (const [a, b, v] of fl) if (u >= a && u < b) return v;
+  return 1;
+}
+function drawBed(g, t) {
+  const L = lightsLevel(t);
+  bg(g, "#1B1C1E");
+  g.globalAlpha = L; g.drawImage(BED, 0, 0); g.globalAlpha = 1;
+  // luces de la fábrica en el drop: cada vuelta del tambor tiñe la nave
+  const d = evs("drop")[0];
+  if (d && t >= d.t && t < bt(32)) {
+    const sp = [...evs("spin")].reverse().find(e => t >= e.t);
+    const name = ORDER[(sp ? sp.i : 0) % 5];
+    g.save(); g.globalCompositeOperation = "color"; g.globalAlpha = .55; g.fillStyle = ACC[name]; g.fillRect(0, 0, W, H); g.restore();
+  }
+}
+function sheetX(i, t) {
+  const s = evs("sheet")[i]; if (!s) return null;
+  const inq = E.inOutCubic(prog(t, s.t - .32, s.t));
+  const nx = evs("sheet")[i + 1];
+  const outq = nx ? E.inOutCubic(prog(t, nx.t - .32, nx.t)) : 0;
+  return lerp(1150, 0, inq) - outq * 1150;
+}
+function drawSheet(g, t, i) {
+  const dx = sheetX(i, t); if (dx === null || dx <= -1150 || dx >= 1150) return;
+  const name = ORDER[i];
+  g.save(); g.translate(dx, 0);
+  // plancha de acetato en gris, con el hueco si la pieza ya se levantó
+  const lift = evs("lift")[i], lifted = lift && t >= lift.t - .1;
+  g.save();
+  const p = new Path2D(); p.roundRect(SHEET.x, SHEET.y, SHEET.w, SHEET.h, 18);
+  if (lifted) { const m = new DOMMatrix().translate(PIECE.x, PIECE.y).scale(PIECE.s, PIECE.s); p.addPath(OUTER_PATH, m); }
+  g.fillStyle = "rgba(0,0,0,.45)"; g.translate(10, 16); g.fill(p, "evenodd"); g.translate(-10, -16);
+  const gr = g.createLinearGradient(SHEET.x, SHEET.y, SHEET.x + SHEET.w, SHEET.y + SHEET.h);
+  gr.addColorStop(0, "#A3A6A9"); gr.addColorStop(.5, "#8C9094"); gr.addColorStop(1, "#7B7F84");
+  g.fillStyle = gr; g.fill(p, "evenodd");
+  g.globalAlpha = .18; g.fillStyle = "#FFFFFF"; g.fillRect(SHEET.x + 40, SHEET.y, 26, SHEET.h); g.fillRect(SHEET.x + 90, SHEET.y, 8, SHEET.h); g.globalAlpha = 1;
+  g.restore();
+  // mordazas
+  for (const e of evs("clamp")) {
+    if (i !== 0 || t < e.t) continue;
+    const q = spring(t - e.t, 26, .4);
+    g.fillStyle = "#3A3D41";
+    const yy = e.b < 3.8 ? SHEET.y - 20 : SHEET.y + SHEET.h - 40;
+    for (const xx of [SHEET.x + 40, SHEET.x + SHEET.w - 140]) { g.beginPath(); g.roundRect(xx, yy - (1 - q) * 60, 100, 60, 8); g.fill(); }
+  }
+  if (i > 0) { g.fillStyle = "#3A3D41"; for (const [xx, yy] of [[SHEET.x + 40, SHEET.y - 20], [SHEET.x + SHEET.w - 140, SHEET.y - 20], [SHEET.x + 40, SHEET.y + SHEET.h - 40], [SHEET.x + SHEET.w - 140, SHEET.y + SHEET.h - 40]]) { g.beginPath(); g.roundRect(xx, yy, 100, 60, 8); g.fill(); } }
+  // grabado de texto (raster) en la primera y segunda plancha
+  if (i === 0) engraveText(g, t, ["MIRÁ EL", "VERANO"], [560, 780], "engrave");
+  // corte
+  const c = evs("cut")[i];
+  if (c && t >= c.t) {
+    const end = bt(c.end), q = i === 0 ? prog(t, c.t, end) : E.inOutCubic(prog(t, c.t, end));
+    const fl = evs("flood")[i], fq = fl ? E.outExpo(prog(t, fl.t, fl.t + .4)) : 0;
+    g.save(); g.translate(PIECE.x, PIECE.y); g.scale(PIECE.s, PIECE.s);
+    if (!lifted) {
+      // la pieza se llena de color desde el corte
+      if (fq > 0) {
+        g.save(); g.clip(FRAME_PATH, "evenodd");
+        g.fillStyle = ACC[name]; g.globalAlpha = fq;
+        g.beginPath(); g.arc(0, 0, 10 + fq * 160, 0, Math.PI * 2); g.fill(); g.restore();
+      }
+      // ranura del corte: el color asoma por la línea
+      g.lineJoin = "round"; g.lineCap = "round";
+      g.strokeStyle = ACC[name]; g.lineWidth = 3.2 / 1; strokeCut(g, q * CUT_TOTAL);
+      g.strokeStyle = "rgba(255,240,200,.9)"; g.lineWidth = 1.1; strokeCut(g, q * CUT_TOTAL);
+    }
+    g.restore();
+    if (q > 0 && q < 1) {
+      const [hx, hy] = cutPoint(q * CUT_TOTAL);
+      const X = PIECE.x + hx * PIECE.s, Y = PIECE.y + hy * PIECE.s;
+      g.save(); g.globalCompositeOperation = "lighter";
+      const glow = g.createRadialGradient(X, Y, 0, X, Y, 90);
+      glow.addColorStop(0, "rgba(255,230,180,.95)"); glow.addColorStop(.3, rgba(ACC[name], .5)); glow.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = glow; g.fillRect(X - 90, Y - 90, 180, 180); g.restore();
+    }
+    sparks(g, t, tt => { const qq = i === 0 ? prog(tt, c.t, end) : E.inOutCubic(prog(tt, c.t, end)); const [hx, hy] = cutPoint(qq * CUT_TOTAL); return [PIECE.x + hx * PIECE.s, PIECE.y + hy * PIECE.s]; }, c.t, end, i * 17);
+  }
+  g.restore();
+}
+function engraveText(g, t, lines, ys, kind) {
+  const ens = evs(kind);
+  lines.forEach((txt, li) => {
+    const e = ens[li]; if (!e || t < e.t) return;
+    const q = prog(t, e.t, bt(e.end)), px = 210;
+    g.save(); g.font = `${px}px IDBlack`; g.textAlign = "center";
+    const top = ys[li] - px * .78, bot = ys[li] + 10, scan = lerp(top, bot, q);
+    g.beginPath(); g.rect(0, top - 5, W, scan - top + 5); g.clip();
+    g.fillStyle = "#34373B"; g.fillText(txt, CX, ys[li]);
+    g.fillStyle = "rgba(255,255,255,.28)"; g.fillText(txt, CX + 2, ys[li] + 3);
+    g.restore();
+    if (q > 0 && q < 1) {
+      const hx = CX + Math.sin(t * 60) * 420, hy = scan;
+      g.save(); g.globalCompositeOperation = "lighter"; g.fillStyle = "rgba(255,200,120,.9)"; g.fillRect(CX - 440, hy - 1.5, 880, 3);
+      const glow = g.createRadialGradient(hx, hy, 0, hx, hy, 60); glow.addColorStop(0, "rgba(255,230,180,.9)"); glow.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = glow; g.fillRect(hx - 60, hy - 60, 120, 120); g.restore();
+      sparks(g, t, tt => [CX + Math.sin(tt * 60) * 420, lerp(top, bot, prog(tt, e.t, bt(e.end)))], e.t, bt(e.end), li * 31 + 5, "#FFC27A");
+    }
+  });
+}
+// la pieza que se levanta y se convierte en el anteojo real
+function drawLifted(g, t) {
+  evs("lift").forEach((e, i) => {
+    if (t < e.t - .1) return;
+    const name = ORDER[i], u = t - e.t;
+    const up = E.outCubic(prog(u, -.1, .25)), fly = E.inCubic(prog(u, .35, .75));
+    const morph = E.inOutCubic(prog(u, 0, .3));
+    const dx = sheetX(i, t) || 0;
+    const x = PIECE.x + dx * (1 - fly), y = PIECE.y - fly * 1500 - up * 30, sc = 1 + .06 * up;
+    if (y < -600) return;
+    g.save(); g.translate(x, y); g.scale(sc, sc);
+    g.save(); g.translate(18, 28); g.globalAlpha = .4 * up; g.scale(PIECE.s, PIECE.s); g.fillStyle = "#000"; g.fill(FRAME_PATH, "evenodd"); g.restore();
+    if (morph < 1) { g.save(); g.globalAlpha = 1 - morph; g.scale(PIECE.s, PIECE.s); g.fillStyle = ACC[name]; g.fill(FRAME_PATH, "evenodd"); g.restore(); }
+    drawPair(g, name, 0, 0, 235 * PIECE.s, 0, morph);
+    g.restore();
+  });
+}
+function drawGantry(g, t) {
+  // pórtico del láser: viga horizontal que sigue al cabezal
+  let hx = 900, hy = 190;
+  const c = [...evs("cut")].reverse().find(e => t >= e.t - .3);
+  if (c) {
+    const i = c.i, end = bt(c.end);
+    const q = i === 0 ? prog(t, c.t, end) : E.inOutCubic(prog(t, c.t, end));
+    if (t <= end + .1) { const [px, py] = cutPoint(q * CUT_TOTAL); hx = PIECE.x + px * PIECE.s; hy = PIECE.y + py * PIECE.s; }
+  }
+  const en = [...evs("engrave")].reverse().find(e => t >= e.t && t <= bt(e.end));
+  if (en) { const ys = [560, 780], px = 210, top = ys[en.line] - px * .78; hx = CX + Math.sin(t * 60) * 420; hy = lerp(top, ys[en.line] + 10, prog(t, en.t, bt(en.end))); }
+  const L = lightsLevel(t);
+  g.save(); g.globalAlpha = .55 + .45 * L;
+  g.fillStyle = "rgba(0,0,0,.35)"; g.fillRect(0, hy - 40 + 20, W, 70);
+  g.fillStyle = "#4A4D52"; g.fillRect(0, hy - 40, W, 60);
+  g.fillStyle = "#6A6E74"; g.fillRect(0, hy - 40, W, 10);
+  g.fillStyle = "#2E3034"; g.beginPath(); g.roundRect(hx - 60, hy - 70, 120, 110, 14); g.fill();
+  g.fillStyle = "#E54F4E"; g.fillRect(hx - 60, hy - 70, 120, 14);
+  g.restore();
+}
+
+// ============================================================================
+//  ESCENAS
+// ============================================================================
+function sFactory(g, t) {
+  drawBed(g, t);
+  for (let i = 0; i < 5; i++) drawSheet(g, t, i);
+  drawLifted(g, t);
+  drawGantry(g, t);
+  // textos
+  const w = evs("word");
+  if (w[0] && t >= w[0].t && t < bt(24)) {
+    const out = 1 - prog(t, bt(23.4), bt(23.8));
+    g.save(); g.globalAlpha = out;
+    riseWord(g, "CON OTRO", CX, 230, 175, "IDBlack", "#FFFFFF", w[0].t, t, { shadow: "#000" });
+    if (t >= w[1].t) { g.font = "205px IDBlack"; const ww = g.measureText("COLOR.").width, hl = E.outExpo(prog(t, w[1].t, w[1].t + .25)); g.fillStyle = "#CFF21E"; g.beginPath(); g.roundRect(CX - ww / 2 - 30, 250, (ww + 60) * hl, 190, 24); g.fill(); }
+    riseWord(g, "COLOR.", CX, 415, 205, "IDBlack", C.ink, w[1].t, t);
+    g.restore();
+  }
+  // etiqueta de cada pieza cortada
+  const fl = [...evs("flood")].reverse().find(e => t >= e.t);
+  if (fl && t < bt(23.6)) {
+    const d = t - fl.t, a = E.outCubic(clamp(d / .15)) * (1 - prog(t, bt(23.3), bt(23.6)));
+    g.save(); g.globalAlpha = a; g.font = "40px IDSemi"; g.letterSpacing = "2px";
+    const txt = LABEL[ORDER[fl.i]], tw = g.measureText(txt).width;
+    g.fillStyle = "rgba(250,245,242,.94)"; g.beginPath(); g.roundRect(CX - tw / 2 - 26, 1700, tw + 52, 66, 33); g.fill();
+    g.fillStyle = C.ink; g.textAlign = "center"; g.fillText(txt, CX, 1746); g.restore();
+  }
+  // oscuridad inicial
+  const L = lightsLevel(t);
+  if (L < 1) { g.fillStyle = `rgba(8,8,9,${(1 - L) * .9})`; g.fillRect(0, 0, W, H); }
+}
+// tambor de pulido (drop)
+function sTumbler(g, t) {
+  drawBed(g, t);
+  const u = t - bt(24), k = pulse("kick", t, 9);
+  let rot = u * 2.2; for (const e of evs("spin")) rot += 1.1 * E.outExpo(prog(t, e.t, e.t + .3));
+  const R = 450, cx = CX, cy = 1060;
+  g.save(); g.translate(cx, cy);
+  g.fillStyle = "rgba(0,0,0,.4)"; g.beginPath(); g.arc(16, 24, R + 40, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "#3A3D41"; g.beginPath(); g.arc(0, 0, R + 40, 0, Math.PI * 2); g.fill();
+  g.save(); g.rotate(rot * .4);
+  g.fillStyle = "#585C62"; for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; g.beginPath(); g.arc(Math.cos(a) * (R + 20), Math.sin(a) * (R + 20), 9, 0, Math.PI * 2); g.fill(); }
+  g.restore();
+  const inner = g.createRadialGradient(0, -80, 40, 0, 0, R);
+  inner.addColorStop(0, "#FFF6EC"); inner.addColorStop(1, "#EADFD3");
+  g.fillStyle = inner; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill();
+  g.save(); g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.clip();
+  NAMES.forEach((name, i) => {
+    const a = rot + i / 5 * Math.PI * 2, rr = 250 + 20 * Math.sin(u * 3 + i);
+    drawPair(g, name, Math.cos(a) * rr, Math.sin(a) * rr, 300 * (1 + .04 * k), a * 1.3 + i);
+  });
+  // brillos del pulido
+  for (let i = 0; i < 10; i++) {
+    const ph = (u * 1.6 + hash(i)) % 1, a = hash(i * 3) * 6.28 + rot, rr = 120 + hash(i * 5) * 300;
+    sparkleStar(g, Math.cos(a) * rr, Math.sin(a) * rr, 22 * Math.sin(ph * Math.PI), "#FFFFFF", ph * 3);
+  }
+  g.restore();
+  // reflejo en el vidrio del tambor
+  g.fillStyle = "rgba(255,255,255,.12)"; g.beginPath(); g.ellipse(-180, -220, 150, 60, -.6, 0, Math.PI * 2); g.fill();
+  g.restore();
+  riseWord(g, "¡QUÉ", CX, 270, 220 * (1 + .02 * k), "IDBlack", "#FFFFFF", bt(24), t, { shadow: C.ink });
+  riseWord(g, "TUPÉ!", CX, 480, 240 * (1 + .02 * k), "IDBlack", "#FFFFFF", bt(25), t, { shadow: C.ink });
+  const fl = pulse("drop", t, 7);
+  if (fl > .01) { g.fillStyle = `rgba(255,240,200,${fl * .8})`; g.fillRect(0, 0, W, H); }
+}
+// número de serie grabado en la patilla
+function sSerial(g, t) {
+  drawBed(g, t);
+  const u = t - bt(32);
+  // patilla de acetato negro, en diagonal
+  g.save(); g.translate(CX, 900); g.rotate(-.42);
+  g.fillStyle = "rgba(0,0,0,.45)"; g.beginPath(); g.roundRect(-900 + 20, -95 + 28, 1500, 190, 95); g.fill();
+  const tg = g.createLinearGradient(0, -95, 0, 95); tg.addColorStop(0, "#3B3438"); tg.addColorStop(.5, "#1F1A1D"); tg.addColorStop(1, "#141113");
+  g.fillStyle = tg; g.beginPath(); g.roundRect(-900, -95, 1500, 190, 95); g.fill();
+  g.fillStyle = "rgba(255,255,255,.12)"; g.fillRect(-880, -78, 1460, 10);
+  // "lab002" ya grabado, y el láser escribe el número
+  g.fillStyle = "#8E8A86"; g.font = "64px IDSemi"; g.textAlign = "left"; g.fillText("lab002", -560, 24);
+  const se = evs("serial")[0], q = prog(t, se.t, bt(se.end));
+  g.save(); g.beginPath(); g.rect(-150, -80, 640 * q, 160); g.clip();
+  g.fillStyle = "#D8D2CC"; g.font = "88px IDBlack"; g.fillText("N° 07/24", -150, 32); g.restore();
+  if (q > 0 && q < 1) {
+    const hx = -150 + 640 * q, hy = Math.sin(t * 70) * 50;
+    g.save(); g.globalCompositeOperation = "lighter"; const glow = g.createRadialGradient(hx, hy, 0, hx, hy, 80); glow.addColorStop(0, "rgba(255,230,180,.95)"); glow.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = glow; g.fillRect(hx - 80, hy - 80, 160, 160); g.restore();
+  }
+  g.restore();
+  // chispas en coordenadas de pantalla
+  const toScreen = (lx, ly) => { const c = Math.cos(-.42), s = Math.sin(-.42); return [CX + lx * c - ly * s, 900 + lx * s + ly * c]; };
+  sparks(g, t, tt => { const qq = prog(tt, se.t, bt(se.end)); return toScreen(-150 + 640 * qq, Math.sin(tt * 70) * 50); }, se.t, bt(se.end), 77);
+  // tarjeta
+  const vl = evs("vline"), yl = evs("yline");
+  const a = E.outCubic(prog(t, vl[0].t - .1, vl[0].t + .2));
+  g.save(); g.globalAlpha = a; g.fillStyle = "rgba(250,245,242,.96)"; g.beginPath(); g.roundRect(60, 1300, W - 140 + 20, 420, 30); g.fill(); g.restore();
+  if (t < yl[0].t) {
+    riseWord(g, "N° de serie en la patilla", CX, 1410, 56, "IDSemi", C.coral, vl[0].t, t);
+    riseWord(g, "21–24 piezas por color.", CX, 1540, 80, "IDBlack", C.ink, vl[1].t, t);
+    riseWord(g, "Fábrica propia en CABA · 100% acetato argentino", CX, 1640, 38, "IDMedium", C.gray, vl[2].t, t);
+  } else {
+    drawPair(g, "fluo", CX, 380, 760, -.04, E.outCubic(prog(t, yl[0].t - .1, yl[0].t + .2)));
+    riseWord(g, "Un anteojo que es tuyo", CX, 1470, 84, "IDBlack", C.ink, yl[0].t, t);
+    riseWord(g, "y de nadie más.", CX, 1590, 84, "IDBlack", C.coral, yl[1].t, t);
+  }
+}
+// cierre: el láser recorta el logo
+const TP = {}; for (const k of TUPE.order) TP[k] = tupePath(k);
+function sEnd(g, t) {
+  bg(g, C.bg);
+  const s = 6.2, lx = CX - 63.5 * s, ly = 640 - 9.5 * s;
+  const p0 = evs("piece")[0].t, p1 = evs("piece")[7].t + .15;
+  const q = E.inOutCubic(prog(t, p0, p1));
+  const top = ly - 12 * s, bot = ly + 31 * s, scan = lerp(top, bot, q);
+  g.save(); g.beginPath(); g.rect(0, 0, W, scan); g.clip();
+  g.save(); g.translate(lx, ly); g.scale(s, s * 1.025);
+  for (const k of TUPE.order) { g.fillStyle = k === "accent" ? C.tang : C.ink; g.fill(TP[k]); }
+  drawCopyright(g, 123.5, 3.2, 4.2, .85, C.ink); g.restore();
+  g.restore();
+  if (q > 0 && q < 1) {
+    g.save(); g.globalCompositeOperation = "multiply"; g.fillStyle = "rgba(255,140,60,.7)"; g.fillRect(lx - 20, scan - 2, 129 * s + 40, 4); g.restore();
+    sparks(g, t, tt => [lx + (Math.sin(tt * 50) * .5 + .5) * 129 * s, lerp(top, bot, E.inOutCubic(prog(tt, p0, p1)))], p0, p1, 99, "#F08A1C");
+  }
+  const c = evs("cta");
+  g.save(); g.textAlign = "center"; g.fillStyle = C.gray;
+  const a1 = E.outCubic(prog(t, c[0].t, c[0].t + .3));
+  g.globalAlpha = a1; g.font = "62px IDLight"; g.fillText("encontrá", CX + 6, 470 + (1 - a1) * 26);
+  g.globalAlpha = 1; g.font = "58px IDLight";
+  const url = "en carladisi.com/tupe", n = Math.floor(clamp((t - c[1].t) / .35) * url.length);
+  g.fillText(url.slice(0, n), CX, 850);
+  const ul = E.inOutCubic(prog(t, c[1].t + .35, c[1].t + .7));
+  if (ul > 0) { const w = g.measureText(url).width; g.fillStyle = C.coral; g.fillRect(CX - w / 2, 872, w * ul, 4); }
+  g.restore();
+  const st = evs("store")[0];
+  if (t >= st.t) {
+    const im = IMG.local, cw = 880, chh = 450, x = CX - cw / 2, y = 975 + (1 - spring(t - st.t, 14, .5)) * 260;
+    const sr = Math.max(cw / im.width, chh / im.height), dw = im.width * sr, dh = im.height * sr;
+    g.save(); g.globalAlpha = clamp((t - st.t) / .15); g.beginPath(); g.roundRect(x, y, cw, chh, 26); g.clip(); g.drawImage(im, x + (cw - dw) / 2, y + (chh - dh) / 2, dw, dh); g.restore();
+    g.save(); g.globalAlpha = clamp((t - st.t - .1) / .3); g.fillStyle = C.ink; g.font = "42px IDMedium"; g.textAlign = "center"; g.letterSpacing = "2px";
+    g.fillText("Probalos en Palermo Soho", CX, 1505); g.restore();
+  }
+  const sg = evs("sign")[0];
+  drawSignature(g, CX - SIGN.w * 3 / 2, 1600 - 13 * 3, 3, E.inOutCubic(prog(t, sg.t, sg.t + 1.0)), C.coral);
+  const d = since("sparkle", t);
+  if (d < .8) {
+    const cols = [C.tang, "#B5E000", C.coral, "#7A3AA0"];
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2 + .3, r = 40 + E.outExpo(clamp(d / .5)) * 150, sz = 22 * Math.max(0, 1 - d / .7);
+      if (sz > 0) sparkleStar(g, lx + 103.5 * s + Math.cos(a) * r, ly - 6 * s + Math.sin(a) * r, sz, cols[i % 4], d * 4);
+    }
+  }
+}
+
+// ============================================================================
+function drawScene(g, t) {
+  g.save();
+  const imp = [[24, 1], [40, .4]].reduce((a, [b, amt]) => a + (t >= bt(b) ? Math.exp(-(t - bt(b)) * 9) * amt : 0), 0) + pulse("clamp", t, 22) * .5;
+  if (imp > .01) g.translate(Math.sin(t * 93) * 12 * imp, Math.cos(t * 71) * 12 * imp);
+  const b = t / BEAT;
+  if (b < 24) sFactory(g, t);
+  else if (b < 32) sTumbler(g, t);
+  else if (b < 40) sSerial(g, t);
+  else sEnd(g, t);
+  g.restore();
+}
+let CUTS = [];
+function subframesAt(t) {
+  const b = t / BEAT;
+  for (const e of evs("sheet")) if (t >= e.t - .34 && t < e.t + .02) return 14;
+  for (const e of evs("lift")) if (t >= e.t + .3 && t < e.t + .8) return 14;
+  if (b >= 24 && b < 32) return 12;
+  for (const e of evs("cut")) if (e.i > 0 && t >= e.t && t < bt(e.end)) return 10;
+  return 6;
+}
+const SHUTTER = .5;
+let grain = [];
+function initTextures() {
+  let seed = 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 6; k++) {
+    const c = mk(256, 256), g = c.getContext("2d"), im = g.createImageData(256, 256);
+    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (rnd() + rnd() - 1) * 110; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    g.putImageData(im, 0, 0); grain.push(ctx.createPattern(c, "repeat"));
+  }
+  // cama de la cortadora: panal de agujeros sobre metal
+  BED = mk(); const g = BED.getContext("2d");
+  const mg = g.createLinearGradient(0, 0, W, H); mg.addColorStop(0, "#56595E"); mg.addColorStop(1, "#3E4145");
+  g.fillStyle = mg; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#2A2C2F";
+  for (let y = 0; y < H + 30; y += 26) for (let x = (y / 26 % 2) * 13; x < W + 30; x += 26) { g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.fill(); }
+  const vg = g.createRadialGradient(CX, CY, 300, CX, CY, 1200); vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.55)");
+  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+}
+function renderFrame(f, opts = {}) {
+  const t0 = f / FPS, sf = opts.subframes || subframesAt(t0);
+  for (let i = 0; i < sf; i++) {
+    let t = clamp(t0 + (sf === 1 ? 0 : (i / (sf - 1) - .5) * SHUTTER / FPS), 0, DUR - 1e-4);
+    for (const c of CUTS) { if (t0 >= c && t < c) t = c; if (t0 < c && t >= c) t = c - 1e-4; }
+    sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.globalAlpha = 1; sctx.globalCompositeOperation = "source-over";
+    drawScene(sctx, t);
+    actx.globalCompositeOperation = i === 0 ? "copy" : "source-over"; actx.globalAlpha = 1 / (i + 1);
+    actx.drawImage(sub, 0, 0);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "copy"; ctx.drawImage(acc, 0, 0);
+  ctx.globalCompositeOperation = "soft-light"; ctx.globalAlpha = .1; ctx.fillStyle = grain[f % grain.length];
+  const ox = Math.floor(hash(f) * 256), oy = Math.floor(hash(f + 3) * 256);
+  ctx.translate(ox, oy); ctx.fillRect(-ox, -oy, W, H);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+}
+async function init(score) {
+  for (const e of score.events) (byKind[e.kind] = byKind[e.kind] || []).push(e);
+  META = score.meta;
+  CUTS = [bt(24), bt(32), bt(40)];
+  const jobs = [];
+  for (const n of NAMES) jobs.push(loadImg(`assets/full_${n}.png`).then(i => IMG[`full_${n}`] = i));
+  jobs.push(loadImg("assets/local.jpg").then(i => IMG.local = i));
+  await Promise.all(jobs);
+  await Promise.all(["IDBlack", "IDLight", "IDMedium", "IDSemi"].map(f => document.fonts.load(`100px ${f}`)));
+  initTextures();
+  window.READY = true;
+}
+window.init = init; window.renderFrame = renderFrame;
+</script>
+</body>
+</html>
