@@ -1,0 +1,530 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TUPÉ · Revelado</title>
+<style>
+  @font-face { font-family: "IDBlack"; src: local("Inter Display Black"), local("InterDisplay-Black"); }
+  @font-face { font-family: "IDLight"; src: local("Inter Display Light"), local("InterDisplay-Light"); }
+  @font-face { font-family: "IDMedium"; src: local("Inter Display Medium"), local("InterDisplay-Medium"); }
+  @font-face { font-family: "IDSemi"; src: local("Inter Display SemiBold"), local("InterDisplay-SemiBold"); }
+  @font-face { font-family: "IDItalic"; src: local("Inter Display Medium Italic"), local("InterDisplay-MediumItalic"); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; height: 100vh; width: auto; margin: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script src="brand.js"></script>
+<script>
+"use strict";
+// ============================================================================
+//  TUPÉ · "Mirá el verano con otro color" — versión REVELADO · 20 s · 1080×1920 · 60 fps
+//  Una cámara instantánea dispara sobre una mesa en blanco y negro. Cada foto se revela
+//  a color: un verano distinto con un TUPÉ. En el drop la mesa misma toma color.
+// ============================================================================
+const W = 1080, H = 1920, FPS = 60, DUR = 20, CX = W / 2, CY = H / 2;
+const BEAT = 60 / 132, bt = b => b * BEAT;
+const C = { bg: "#FAF5F2", ink: "#2B2427", coral: "#E54F4E", gray: "#6F6866", tang: "#F8B414" };
+const NAMES = ["violeta", "caramelo", "fluo", "gris", "nude"];
+const LABEL = { violeta: "lab001 · violeta", caramelo: "lab002 · caramelo", fluo: "lab002 · verde flúo", gris: "lab002 · gris", nude: "lab001 · nude" };
+const PW = 440, PH = 530, IMGS = 392;
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const E = {
+  outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t), inExpo: t => t <= 0 ? 0 : Math.pow(2, 10 * t - 10),
+  inOutExpo: t => t <= 0 ? 0 : t >= 1 ? 1 : t < .5 ? Math.pow(2, 20 * t - 10) / 2 : (2 - Math.pow(2, -20 * t + 10)) / 2,
+  outCubic: t => 1 - Math.pow(1 - t, 3), inCubic: t => t * t * t,
+  inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+};
+const spring = (t, w = 18, z = .35) => t <= 0 ? 0 : 1 - Math.exp(-z * w * t) * Math.cos(w * Math.sqrt(1 - z * z) * t);
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const rgba = (h, a) => { const [r, g, b] = hexRGB(h); return `rgba(${r},${g},${b},${clamp(a)})`; };
+const mixHex = (a, b, t) => { const A = hexRGB(a), B = hexRGB(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(",")})`; };
+
+// ---------------------------------------------------------------- partitura
+const byKind = {};
+const evs = k => byKind[k] || [];
+function since(kind, t, f) { let s = Infinity; for (const e of evs(kind)) if (e.t <= t + 1e-9 && (!f || f(e))) s = t - e.t; return s; }
+function pulse(kind, t, decay = 9, f) { const s = since(kind, t, f); return s === Infinity ? 0 : Math.exp(-s * decay); }
+
+// ---------------------------------------------------------------- lienzos e imágenes
+const main = document.getElementById("c"), ctx = main.getContext("2d");
+const mk = (w = W, h = H) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+const sub = mk(), sctx = sub.getContext("2d"), acc = mk(), actx = acc.getContext("2d");
+const IMG = {}; let META = null, NOISE = null, LEAVES = null;
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+function bg(g, c) { g.fillStyle = c; g.fillRect(-60, -60, W + 120, H + 120); }
+let MODE = "color";
+function col(hex, a = 1) {
+  const [r, g, b] = hexRGB(hex);
+  if (MODE === "color") return `rgba(${r},${g},${b},${a})`;
+  const l = .299 * r + .587 * g + .114 * b, v = Math.round(128 + (l - 128) * .8);
+  return `rgba(${v},${v},${v},${a})`;
+}
+function drawPair(g, name, x, y, w, rot = 0, gray = false, shadow = 0) {
+  const m = META[name], s = w / m.w;
+  g.save(); g.translate(x, y); g.rotate(rot);
+  if (shadow > 0) { g.save(); g.globalAlpha = shadow; g.translate(14, 22); g.scale(s, s); g.filter = "none"; g.drawImage(IMG["shadow_" + name], -m.w / 2, -m.h / 2); g.restore(); }
+  g.scale(s, s);
+  g.drawImage(IMG[(gray ? "fullgray_" : "full_") + name], -m.w / 2, -m.h / 2); g.restore();
+}
+function riseWord(g, txt, x, y, px, fam, color, tb, t, o = {}) {
+  if (t < tb) return;
+  g.save(); g.font = `${px}px ${fam}`; if (o.ls) g.letterSpacing = o.ls;
+  const m = g.measureText(txt), w = m.width, asc = m.actualBoundingBoxAscent;
+  const x0 = (o.align || "center") === "center" ? x - w / 2 : x;
+  g.beginPath(); g.rect(x0 - 60, y - asc - 40, w + 120, asc + 40 + px * .32); g.clip();
+  const sp = spring(t - tb, 22, .42), yy = y + (1 - sp) * (asc + 50);
+  if (o.shadow) { g.shadowColor = o.shadow; g.shadowOffsetX = 8; g.shadowOffsetY = 12; }
+  g.fillStyle = color; g.fillText(txt, x0, yy);
+  g.restore();
+}
+function sparkleStar(g, x, y, r, color, rot = 0) {
+  g.save(); g.translate(x, y); g.rotate(rot); g.fillStyle = color; g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, rr = i % 2 ? r * .22 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  g.closePath(); g.fill(); g.restore();
+}
+
+// ============================================================================
+//  VIÑETAS DE VERANO (dentro de cada foto, 392×392)
+// ============================================================================
+function vignette(g, i, t, s = IMGS) {
+  g.save(); g.scale(s / IMGS, s / IMGS);
+  if (i === 0) {          // atardecer sobre los techos · caramelo
+    const sk = g.createLinearGradient(0, 0, 0, IMGS);
+    sk.addColorStop(0, "#FF7A3C"); sk.addColorStop(.6, "#FFC46B"); sk.addColorStop(1, "#FFE6B8");
+    g.fillStyle = sk; g.fillRect(0, 0, IMGS, IMGS);
+    g.fillStyle = "#FFF2C9"; g.beginPath(); g.arc(196, 250, 84 + 3 * Math.sin(t * 3), 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#5B2E45";
+    for (let k = 0; k < 9; k++) { const w = 30 + hash(k) * 30, h = 50 + hash(k + 4) * 90; g.fillRect(k * 46 - 6, IMGS - h, w, h); }
+    drawPair(g, "caramelo", 196, 150, 330, -.05, false, .35);
+  } else if (i === 1) {   // pileta vista desde arriba · verde flúo
+    g.fillStyle = "#18B3D6"; g.fillRect(0, 0, IMGS, IMGS);
+    g.fillStyle = "#F4F1EA"; g.fillRect(0, 0, IMGS, 44);
+    g.strokeStyle = "#D6D0C4"; g.lineWidth = 2; for (let x = 0; x < IMGS; x += 44) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 44); g.stroke(); }
+    g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 3;
+    for (let r = 0; r < 9; r++) {
+      g.beginPath();
+      for (let x = 0; x <= IMGS; x += 8) { const y = 70 + r * 40 + Math.sin(x * .05 + t * 2.6 + r * 1.7) * 8 + Math.sin(x * .021 - t * 1.9) * 6; x ? g.lineTo(x, y) : g.moveTo(x, y); }
+      g.stroke();
+    }
+    drawPair(g, "fluo", 196 + Math.sin(t * 1.4) * 6, 230 + Math.cos(t * 1.2) * 5, 320, .1 + Math.sin(t) * .03, false, .45);
+  } else if (i === 2) {   // paletas heladas · violeta
+    g.fillStyle = "#FF9EC4"; g.fillRect(0, 0, IMGS, IMGS);
+    const pc = ["#FFE15A", "#7FDBCA", "#FF6B6B", "#FFFFFF", "#B48CFF"];
+    for (let k = 0; k < 7; k++) {
+      const x = 20 + k * 56, y = (k % 2 ? 40 : 230), r = (k % 2 ? .3 : -.25);
+      g.save(); g.translate(x, y); g.rotate(r);
+      g.fillStyle = "#E8C99A"; g.fillRect(-7, 90, 14, 60);
+      g.fillStyle = pc[k % pc.length]; g.beginPath(); g.roundRect(-30, -20, 60, 120, 28); g.fill(); g.restore();
+    }
+    drawPair(g, "violeta", 196, 200, 330, .06, false, .35);
+  } else if (i === 3) {   // hojas de monstera · gris
+    g.fillStyle = "#24603D"; g.fillRect(0, 0, IMGS, IMGS);
+    for (let k = 0; k < 8; k++) {
+      const x = hash(k * 3) * IMGS, y = hash(k * 7) * IMGS, r = hash(k) * 6;
+      g.save(); g.translate(x, y); g.rotate(r + Math.sin(t + k) * .05); g.fillStyle = k % 2 ? "#3FA368" : "#2F8A55";
+      g.beginPath(); g.ellipse(0, 0, 120, 70, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#24603D"; g.lineWidth = 6; for (let j = -2; j <= 2; j++) { g.beginPath(); g.moveTo(0, 0); g.lineTo(110, j * 28); g.stroke(); }
+      g.restore();
+    }
+    drawPair(g, "gris", 196, 200, 330, -.08, false, .4);
+  } else {                // santa rita en la pared · nude
+    g.fillStyle = "#F6E0CE"; g.fillRect(0, 0, IMGS, IMGS);
+    g.fillStyle = "#3E7A3A";
+    for (let k = 0; k < 14; k++) { g.beginPath(); g.ellipse(hash(k * 5) * IMGS, hash(k * 9) * 160, 22, 12, hash(k) * 3, 0, Math.PI * 2); g.fill(); }
+    for (let k = 0; k < 40; k++) {
+      const x = hash(k * 2.3) * IMGS, y = hash(k * 4.1) * 170 * (1 + hash(k)), r = 12 + hash(k * 6) * 12;
+      g.fillStyle = k % 3 ? "#D6337A" : "#F05A9B"; g.beginPath(); g.arc(x, y + Math.sin(t * 2 + k) * 2, r, 0, Math.PI * 2); g.fill();
+    }
+    drawPair(g, "nude", 196, 260, 330, .04, false, .35);
+  }
+  g.restore();
+}
+
+// ---------------------------------------------------------------- foto instantánea
+// dev 0..1: 0 = recién salida (gris pizarra), 1 = revelada
+function polaroid(g, i, x, y, rot, dev, t, o = {}) {
+  const sc = o.scale || 1;
+  g.save(); g.translate(x, y); g.rotate(rot); g.scale(sc, sc);
+  // sombra
+  g.fillStyle = "rgba(30,20,20,.22)"; g.beginPath(); g.roundRect(-PW / 2 + 12, -PH / 2 + 18, PW, PH, 6); g.fill();
+  g.fillStyle = o.gray ? "#ECEAE6" : "#FBF8F2"; g.beginPath(); g.roundRect(-PW / 2, -PH / 2, PW, PH, 6); g.fill();
+  const ix = -IMGS / 2, iy = -PH / 2 + 24;
+  g.save(); g.beginPath(); g.rect(ix, iy, IMGS, IMGS); g.clip(); g.translate(ix, iy);
+  if (dev > 0) {
+    vignette(g, i, t);
+    if (o.gray) { g.globalCompositeOperation = "saturation"; g.fillStyle = "#808080"; g.fillRect(0, 0, IMGS, IMGS); g.globalCompositeOperation = "source-over"; }
+  }
+  // química: la emulsión se aclara de pizarra a la imagen, con manchas que se disuelven
+  if (dev < 1) {
+    const a = 1 - E.inOutCubic(dev);
+    g.fillStyle = mixHex("#3C4A4E", "#9FA9A6", E.outCubic(clamp(dev * 1.6)));
+    g.globalAlpha = a; g.fillRect(0, 0, IMGS, IMGS);
+    g.globalAlpha = a * .5;
+    for (let k = 0; k < 7; k++) { g.fillStyle = k % 2 ? "#556267" : "#B7BDB8"; g.beginPath(); g.ellipse(hash(k + i * 9) * IMGS, hash(k * 3 + i) * IMGS, 90, 60, k, 0, Math.PI * 2); g.fill(); }
+    g.globalAlpha = 1;
+  }
+  g.restore();
+  // pie de foto escrito
+  if (dev > .6) {
+    g.globalAlpha = clamp((dev - .6) / .3);
+    g.fillStyle = C.gray; g.font = "30px IDItalic"; g.textAlign = "center";
+    g.fillText(o.caption || LABEL[["caramelo", "fluo", "violeta", "gris", "nude"][i]], 0, PH / 2 - 44);
+  }
+  g.restore();
+}
+
+// ============================================================================
+//  LA MESA
+// ============================================================================
+const SHOTS = () => evs("shot");
+const TARGET = [[300, 730, -.12], [780, 850, .1], [320, 1230, .08], [790, 1330, -.09], [560, 1030, .03]];
+const SCATTER = [[-40, 430, -.35], [1120, 520, .3], [-70, 1360, .28], [1150, 1460, -.32], [880, 1830, .18]];
+const CAM = { x: CX, y: 1850 };
+function tableColor(t) {
+  const d = evs("drop")[0];
+  return d ? E.outExpo(prog(t, d.t - .02, d.t + .55)) : 0;
+}
+function drawTable(g, t) {
+  const q = tableColor(t);
+  bg(g, "#CFCBC6");
+  g.globalAlpha = .5; g.drawImage(NOISE, 0, 0); g.globalAlpha = 1;
+  if (q > 0) {
+    g.save(); g.beginPath(); g.arc(CAM.x, CAM.y - 200, q * 2300, 0, Math.PI * 2); g.clip();
+    const tg = g.createLinearGradient(0, 0, W, H);
+    tg.addColorStop(0, "#F6CDA8"); tg.addColorStop(1, "#EFA982");
+    g.fillStyle = tg; g.fillRect(0, 0, W, H);
+    g.globalAlpha = .35; g.drawImage(NOISE, 0, 0); g.globalAlpha = 1;
+    // sol de verano entre hojas: sombras que se mecen
+    g.globalCompositeOperation = "multiply"; g.globalAlpha = .32;
+    g.drawImage(LEAVES, -160 + Math.sin(t * .9) * 30, -140 + Math.cos(t * .7) * 24);
+    g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
+    g.restore();
+  }
+}
+function drawCamera(g, t) {
+  const d = evs("drop")[0], out = d ? E.inCubic(prog(t, d.t - .2, d.t + .25)) : 0;
+  const end = evs("endshot")[0];
+  if (out >= 1 && !(end && t >= end.t)) return;
+  const y = CAM.y + out * 500;
+  MODE = tableColor(t) > .2 ? "color" : "gray";
+  g.save(); g.translate(CAM.x, y);
+  g.fillStyle = "rgba(20,10,10,.25)"; g.beginPath(); g.roundRect(-300 + 14, -170 + 20, 600, 380, 60); g.fill();
+  g.fillStyle = col("#F1EBE1"); g.beginPath(); g.roundRect(-300, -170, 600, 380, 60); g.fill();
+  g.fillStyle = col("#E54F4E"); g.fillRect(-300, -40, 600, 40);
+  g.fillStyle = col("#2B2427"); g.beginPath(); g.arc(0, 40, 120, 0, Math.PI * 2); g.fill();
+  g.fillStyle = col("#3E4A5C"); g.beginPath(); g.arc(0, 40, 82, 0, Math.PI * 2); g.fill();
+  g.fillStyle = "rgba(255,255,255,.35)"; g.beginPath(); g.arc(-26, 14, 22, 0, Math.PI * 2); g.fill();
+  // ventana del flash: brilla en cada disparo
+  const fl = Math.max(pulse("shot", t, 10), pulse("burst", t, 12), pulse("flash", t, 8));
+  g.fillStyle = mixHex("#5B6470", "#FFFFFF", fl); g.beginPath(); g.roundRect(160, -140, 110, 70, 10); g.fill();
+  g.fillStyle = col("#2B2427"); g.fillRect(-220, -172, 440, 14);       // ranura de salida
+  g.restore();
+}
+function photoState(i, t) {
+  const sh = SHOTS()[i], ld = evs("land")[i], dv = evs("developed")[i];
+  if (!sh || t < sh.t) return null;
+  const [tx, ty, tr] = TARGET[i];
+  let x, y, rot, scale = 1;
+  const ej = prog(t, sh.t + .03, sh.t + .28);            // sale de la ranura
+  const sx = CAM.x, sy = CAM.y - 170 - PH / 2 * E.outCubic(ej) - 10;
+  if (t < ld.t - .26) { x = sx; y = sy + PH / 2 * (1 - E.outCubic(ej)); rot = 0; }
+  else {
+    const q = E.inOutCubic(prog(t, ld.t - .26, ld.t));    // tirada en arco hasta la mesa
+    x = lerp(sx, tx, q); y = lerp(sy, ty, q) - Math.sin(q * Math.PI) * 160; rot = lerp(0, tr + (i % 2 ? .6 : -.6), q) - (i % 2 ? .6 : -.6) * E.outCubic(q);
+    scale = 1 + Math.sin(q * Math.PI) * .12;
+    const d = t - ld.t; if (d > 0) { scale *= 1 - .04 * Math.exp(-d * 14) * Math.cos(d * 40); rot = tr; }
+  }
+  // en el drop se van a los bordes y quedan como marco del flat-lay
+  const dr = evs("drop")[0];
+  if (dr && t > dr.t - .05) {
+    const q = E.inOutExpo(prog(t, dr.t - .05, dr.t + .4 + i * .03));
+    x = lerp(x, SCATTER[i][0], q); y = lerp(y, SCATTER[i][1], q); rot = lerp(rot, SCATTER[i][2], q);
+  }
+  // revelado
+  let dev = E.inOutCubic(prog(t, ld.t, dv.t));
+  // los flashes en ráfaga "fuerzan" el revelado
+  const b = evs("burst").filter(e => t >= e.t).length;
+  if (b > 0) dev = Math.max(dev, clamp(b / 4));
+  if (dr && t >= dr.t) dev = 1;
+  return { x, y, rot, dev, scale };
+}
+
+// ---------------------------------------------------------------- flat-lay del drop
+const LAY = [[540, 700, -.05], [520, 900, .06], [560, 1100, -.04], [520, 1300, .05], [550, 1500, -.03]];
+function drawFlatlay(g, t) {
+  const ch = since("choose", t);
+  for (const e of evs("place")) {
+    if (t < e.t - .2) continue;
+    const i = e.i, [x, y, r] = LAY[i];
+    const q = E.inCubic(prog(t, e.t - .2, e.t)), d = t - e.t;
+    const bnc = d > 0 ? Math.exp(-d * 10) * Math.cos(d * 30) : 0;
+    const fx = (i % 2 ? 1 : -1) * (1 - q) * 900;
+    const gray = ch !== Infinity && e.to !== "fluo";
+    const fade = gray ? E.inOutCubic(clamp(ch / .35)) : 0;
+    g.save(); g.translate(x + fx, y); g.rotate(r + (1 - q) * (i % 2 ? .5 : -.5)); g.scale(1 + .05 * bnc, 1 - .07 * bnc);
+    drawPair(g, e.to, 0, 0, 520, 0, false, .5);
+    if (fade > 0) { g.globalAlpha = fade; drawPair(g, e.to, 0, 0, 520, 0, true, 0); }
+    g.restore();
+  }
+}
+function drawObjects(g, t) {
+  for (const e of evs("obj")) {
+    if (t < e.t - .2) continue;
+    const q = E.inCubic(prog(t, e.t - .2, e.t)), d = t - e.t, b = d > 0 ? Math.exp(-d * 9) * Math.cos(d * 26) : 0;
+    g.save();
+    if (e.which === "case") {         // estuche rígido con la firma
+      g.translate(lerp(-400, 200, q), 1760); g.rotate(-.18 + (1 - q) * .6); g.scale(1 + .04 * b, 1 - .05 * b);
+      g.fillStyle = "rgba(30,20,20,.25)"; g.beginPath(); g.roundRect(-190 + 14, -80 + 20, 380, 160, 70); g.fill();
+      g.fillStyle = "#2B2427"; g.beginPath(); g.roundRect(-190, -80, 380, 160, 70); g.fill();
+      g.strokeStyle = "rgba(255,255,255,.15)"; g.lineWidth = 3; g.beginPath(); g.moveTo(-180, 0); g.lineTo(180, 0); g.stroke();
+      drawSignature(g, -125, -30, 1.9, 1, "#E9D6C4");
+    } else if (e.which === "cloth") {  // paño
+      g.translate(lerp(1400, 860, q), 1700); g.rotate(.22 - (1 - q) * .5);
+      g.fillStyle = "rgba(30,20,20,.18)"; g.fillRect(-170 + 10, -170 + 14, 340, 340);
+      g.fillStyle = "#E54F4E"; g.fillRect(-170, -170, 340, 340);
+      g.fillStyle = "rgba(255,255,255,.18)"; for (let k = -170; k < 170; k += 34) g.fillRect(k, -170, 12, 340);
+      g.fillStyle = "#FAF5F2"; g.font = "28px IDBlack"; g.textAlign = "center"; g.fillText("TUPÉ", 0, 150);
+    } else {                           // limonada con hielo
+      g.translate(lerp(1300, 930, q), lerp(-200, 300, q));
+      g.fillStyle = "rgba(30,20,20,.2)"; g.beginPath(); g.arc(16, 22, 110, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "rgba(255,255,255,.75)"; g.beginPath(); g.arc(0, 0, 110, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#FFE98A"; g.beginPath(); g.arc(0, 0, 92, 0, Math.PI * 2); g.fill();
+      for (let k = 0; k < 4; k++) { g.save(); g.rotate(k * 1.6 + t * .3); g.fillStyle = "rgba(255,255,255,.7)"; g.fillRect(14, -20, 40, 40); g.restore(); }
+      g.fillStyle = "#C8E64A"; g.beginPath(); g.arc(-40, -30, 46, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#F4FAD0"; g.beginPath(); g.arc(-40, -30, 38, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#C8E64A"; g.lineWidth = 3; for (let k = 0; k < 8; k++) { g.beginPath(); g.moveTo(-40, -30); g.lineTo(-40 + Math.cos(k * .785) * 38, -30 + Math.sin(k * .785) * 38); g.stroke(); }
+    }
+    g.restore();
+  }
+}
+// certificado de serie
+function drawCert(g, t) {
+  const c = evs("cert")[0]; if (!c || t < c.t - .2) return;
+  const out = evs("yline")[0], o = out ? E.inCubic(prog(t, out.t - .25, out.t + .05)) : 0;
+  if (o >= 1) return;
+  const q = spring(t - c.t + .2, 14, .5);
+  g.save(); g.translate(CX + o * 1300, 1060 + (1 - q) * 1200); g.rotate(-.03 + (1 - q) * .2);
+  g.fillStyle = "rgba(30,20,20,.25)"; g.fillRect(-410 + 14, -330 + 20, 820, 660);
+  g.fillStyle = "#FBF8F2"; g.fillRect(-410, -330, 820, 660);
+  g.strokeStyle = "#2B2427"; g.lineWidth = 3; g.strokeRect(-380, -300, 760, 600);
+  g.fillStyle = C.gray; g.font = "30px IDSemi"; g.textAlign = "center"; g.letterSpacing = "8px";
+  g.fillText("CERTIFICADO DE SERIE", 0, -230); g.letterSpacing = "0px";
+  const st = evs("stamp");
+  const stampIn = (i, fn) => { const e = st[i]; if (!e || t < e.t) return; const d = t - e.t, s = 1 + .5 * Math.exp(-d * 22); g.save(); g.scale(s, s); g.globalAlpha = clamp(d / .04); fn(); g.restore(); };
+  g.fillStyle = C.ink; g.font = "170px IDBlack"; g.fillText("N° 07/24", 0, -50);
+  stampIn(0, () => { g.fillStyle = C.coral; g.font = "52px IDBlack"; g.fillText("21–24 piezas por color", 0, 50); });
+  stampIn(1, () => { g.fillStyle = C.ink; g.font = "36px IDMedium"; g.fillText("N° de serie en la patilla · lab002 verde flúo", 0, 130); });
+  stampIn(2, () => { g.fillStyle = C.ink; g.font = "34px IDMedium"; g.fillText("Diseño Carla Di Sí · Hecho en Argentina", 0, 190); g.fillText("100% acetato argentino · estuche y paño", 0, 240); });
+  g.restore();
+}
+
+// ============================================================================
+//  ESCENA PRINCIPAL
+// ============================================================================
+function sTable(g, t) {
+  drawTable(g, t);
+  // fotos (orden: las más nuevas arriba)
+  for (let i = 0; i < 5; i++) { const s = photoState(i, t); if (s) polaroid(g, i, s.x, s.y, s.rot, s.dev, t, { scale: s.scale }); }
+  drawFlatlay(g, t);
+  drawObjects(g, t);
+  drawCamera(g, t);
+  drawCert(g, t);
+  // textos
+  const w = [[4, "MIRÁ"], [5, "EL VERANO"], [8, "CON OTRO"], [9, "COLOR."]];
+  const fade = 1 - prog(t, bt(12) - .15, bt(12));
+  if (fade > 0) {
+    g.save(); g.globalAlpha = fade;
+    if (t < bt(8)) {
+      riseWord(g, "MIRÁ", CX, 240, 210, "IDBlack", C.ink, bt(4), t);
+      riseWord(g, "EL VERANO", CX, 400, 165, "IDBlack", C.ink, bt(5), t);
+    } else {
+      riseWord(g, "CON OTRO", CX, 230, 175, "IDBlack", C.ink, bt(8), t);
+      if (t >= bt(9)) { g.font = "205px IDBlack"; const ww = g.measureText("COLOR.").width, hl = E.outExpo(prog(t, bt(9), bt(9) + .25)); g.fillStyle = "#D9F53B"; g.beginPath(); g.roundRect(CX - ww / 2 - 30, 250, (ww + 60) * hl, 190, 24); g.fill(); }
+      riseWord(g, "COLOR.", CX, 415, 205, "IDBlack", C.ink, bt(9), t);
+    }
+    g.restore();
+  }
+  if (t >= bt(20) && t < bt(26)) {
+    const k = pulse("kick", t, 10), out = 1 - prog(t, bt(26) - .2, bt(26));
+    g.save(); g.globalAlpha = out;
+    riseWord(g, "¡QUÉ", CX, 250, 210 * (1 + .02 * k), "IDBlack", "#FFFFFF", bt(20), t, { shadow: C.ink });
+    riseWord(g, "TUPÉ!", CX, 450, 230 * (1 + .02 * k), "IDBlack", "#FFFFFF", bt(21), t, { shadow: C.ink });
+    g.restore();
+  }
+  const yl = evs("yline");
+  if (t >= yl[0].t) {
+    riseWord(g, "Un anteojo que es tuyo", CX, 240, 84, "IDBlack", C.ink, yl[0].t, t);
+    riseWord(g, "y de nadie más.", CX, 350, 84, "IDBlack", C.coral, yl[1].t, t);
+  }
+  // flash del disparo
+  const fl = Math.max(pulse("shot", t, 14) * .7, pulse("burst", t, 16) * .8, pulse("flash", t, 6), pulse("drop", t, 7) * .8);
+  if (fl > .01) { g.fillStyle = `rgba(255,255,255,${fl})`; g.fillRect(0, 0, W, H); }
+  // oscuridad inicial: la sala antes del primer flash
+  const dark = 1 - (t >= bt(2) ? 1 : 0);
+  if (dark > 0) { bg(g, "#0E0C0D"); const wh = since("whine", t); g.fillStyle = `rgba(255,255,255,${.08 * clamp(wh / bt(2))})`; g.beginPath(); g.arc(CAM.x + 215, CAM.y - 105, 60, 0, Math.PI * 2); g.fill(); }
+}
+
+// ---------------------------------------------------------------- cierre: una foto que se revela
+const TP = {}; for (const k of TUPE.order) TP[k] = tupePath(k);
+function drawTupeT(g, x, y, s, t) {
+  g.save(); g.translate(x, y); g.scale(s, s * 1.025);
+  for (const k of TUPE.order) { g.fillStyle = k === "accent" ? C.tang : C.ink; g.fill(TP[k]); }
+  drawCopyright(g, 123.5, 3.2, 4.2, .85, C.ink);
+  g.restore();
+}
+function sEnd(g, t) {
+  drawTable(g, t);
+  const e = evs("endshot")[0], dv = evs("enddev")[0], u = t - e.t;
+  // la foto final entra desde abajo y se asienta
+  const sp = spring(u, 11, .5), EW = 920, EH = 1100, EI = 840;
+  const x = CX, y = 860 + (1 - sp) * 1400, rot = -.025 + (1 - sp) * .2;
+  const dev = E.inOutCubic(prog(t, dv.t - .3, dv.t + .9));
+  g.save(); g.translate(x, y); g.rotate(rot);
+  g.fillStyle = "rgba(30,20,20,.25)"; g.beginPath(); g.roundRect(-EW / 2 + 16, -EH / 2 + 24, EW, EH, 8); g.fill();
+  g.fillStyle = "#FBF8F2"; g.beginPath(); g.roundRect(-EW / 2, -EH / 2, EW, EH, 8); g.fill();
+  const ix = -EI / 2, iy = -EH / 2 + 40;
+  g.save(); g.beginPath(); g.rect(ix, iy, EI, EI); g.clip(); g.translate(ix, iy);
+  // imagen: el cierre de marca, sobre la luz de verano
+  const gr = g.createLinearGradient(0, 0, 0, EI); gr.addColorStop(0, "#FFE7C7"); gr.addColorStop(1, "#FAF5F2");
+  g.fillStyle = gr; g.fillRect(0, 0, EI, EI);
+  g.globalCompositeOperation = "multiply"; g.globalAlpha = .18; g.drawImage(LEAVES, -300 + Math.sin(t) * 20, -200); g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+  const s = 5.0;
+  const c = evs("cta");
+  g.fillStyle = C.gray; g.font = "54px IDLight"; g.textAlign = "center";
+  g.globalAlpha = E.outCubic(prog(t, c[0].t, c[0].t + .3)); g.fillText("encontrá", EI / 2 + 4, 290); g.globalAlpha = 1;
+  drawTupeT(g, EI / 2 - 63.5 * s, 420 - 9.5 * s, s, t);
+  g.font = "50px IDLight"; const url = "en carladisi.com/tupe";
+  g.fillText(url.slice(0, Math.floor(clamp((t - c[1].t) / .35) * url.length)), EI / 2, 600);
+  const ul = E.inOutCubic(prog(t, c[1].t + .35, c[1].t + .7));
+  if (ul > 0) { const w = g.measureText(url).width; g.fillStyle = C.coral; g.fillRect(EI / 2 - w / 2, 620, w * ul, 4); }
+  // química
+  if (dev < 1) {
+    const a = 1 - dev; g.fillStyle = mixHex("#3C4A4E", "#9FA9A6", E.outCubic(clamp(dev * 1.6)));
+    g.globalAlpha = a; g.fillRect(0, 0, EI, EI); g.globalAlpha = 1;
+  }
+  g.restore();
+  // firma en el borde blanco, como quien firma su foto
+  const sg = evs("sign")[0];
+  drawSignature(g, -EW / 2 + 70, EH / 2 - 150, 3.2, E.inOutCubic(prog(t, sg.t, sg.t + 1.1)), C.coral);
+  g.restore();
+  // la foto del local, tirada encima
+  const st = evs("store")[0];
+  if (t >= st.t - .25) {
+    const q = E.inOutCubic(prog(t, st.t - .25, st.t)), d = t - st.t;
+    const sx = lerp(1400, 830, q), sy = lerp(2100, 1560, q), r = lerp(.6, .13, q);
+    g.save(); g.translate(sx, sy); g.rotate(r); const scl = .9 * (1 + Math.sin(q * Math.PI) * .1);
+    g.scale(scl, scl);
+    g.fillStyle = "rgba(30,20,20,.25)"; g.beginPath(); g.roundRect(-PW / 2 + 12, -PH / 2 + 18, PW, PH, 6); g.fill();
+    g.fillStyle = "#FBF8F2"; g.beginPath(); g.roundRect(-PW / 2, -PH / 2, PW, PH, 6); g.fill();
+    g.save(); g.beginPath(); g.rect(-IMGS / 2, -PH / 2 + 24, IMGS, IMGS); g.clip();
+    const im = IMG.local, srr = Math.max(IMGS / im.width, IMGS / im.height);
+    g.drawImage(im, -im.width * srr / 2, -PH / 2 + 24 + IMGS / 2 - im.height * srr / 2, im.width * srr, im.height * srr);
+    const dd = E.inOutCubic(prog(t, st.t, st.t + .8));
+    if (dd < 1) { g.globalAlpha = 1 - dd; g.fillStyle = "#3C4A4E"; g.fillRect(-IMGS / 2, -PH / 2 + 24, IMGS, IMGS); g.globalAlpha = 1; }
+    g.restore();
+    const cp = evs("caption")[0];
+    if (t >= cp.t) { g.globalAlpha = clamp((t - cp.t) / .3); g.fillStyle = C.gray; g.font = "30px IDItalic"; g.textAlign = "center"; g.fillText("probalos en Palermo Soho", 0, PH / 2 - 44); }
+    g.restore();
+  }
+  // destello final sobre el acento de la É
+  const d = since("sparkle", t);
+  if (d < .8) {
+    const ax = x - EI / 2 + EI / 2 - 63.5 * 5 + 103.5 * 5, ay = y - EH / 2 + 40 + 420 - 9.5 * 5 - 6 * 5;
+    const cols = [C.tang, "#B5E000", C.coral, "#7A3AA0"];
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2 + .3, r = 40 + E.outExpo(clamp(d / .5)) * 150, sz = 22 * Math.max(0, 1 - d / .7);
+      if (sz > 0) sparkleStar(g, ax + Math.cos(a) * r, ay + Math.sin(a) * r, sz, cols[i % 4], d * 4);
+    }
+  }
+  const fl = pulse("endshot", t, 6);
+  if (fl > .01) { g.fillStyle = `rgba(255,255,255,${fl})`; g.fillRect(0, 0, W, H); }
+}
+
+// ============================================================================
+function drawScene(g, t) {
+  g.save();
+  const imp = [[20, 1], [34, .5]].reduce((a, [b, amt]) => a + (t >= bt(b) ? Math.exp(-(t - bt(b)) * 9) * amt : 0), 0) + pulse("shot", t, 20) * .3 + pulse("burst", t, 20) * .35;
+  if (imp > .01) g.translate(Math.sin(t * 93) * 12 * imp, Math.cos(t * 71) * 12 * imp);
+  if (t < bt(34)) sTable(g, t); else sEnd(g, t);
+  g.restore();
+}
+let CUTS = [];
+function subframesAt(t) {
+  for (const e of evs("land")) if (t >= e.t - .28 && t < e.t + .05) return 16;
+  for (const e of evs("shot")) if (t >= e.t && t < e.t + .3) return 10;
+  for (const e of evs("place")) if (t >= e.t - .22 && t < e.t + .04) return 14;
+  for (const e of evs("obj")) if (t >= e.t - .22 && t < e.t + .04) return 12;
+  for (const k of ["drop", "endshot", "store"]) for (const e of evs(k)) if (t >= e.t - .3 && t < e.t + .6) return 16;
+  for (const k of ["cert", "yline"]) for (const e of evs(k)) if (t >= e.t - .3 && t < e.t + .3) return 12;
+  return 6;
+}
+const SHUTTER = .5;
+let grain = [];
+function initTextures() {
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 6; k++) {
+    const c = mk(256, 256), g = c.getContext("2d"), im = g.createImageData(256, 256);
+    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (rnd() + rnd() - 1) * 110; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    g.putImageData(im, 0, 0); grain.push(ctx.createPattern(c, "repeat"));
+  }
+  // textura de mesa (fibras suaves)
+  NOISE = mk(); const n = NOISE.getContext("2d");
+  for (let i = 0; i < 9000; i++) { n.fillStyle = rnd() < .5 ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.06)"; n.fillRect(rnd() * W, rnd() * H, 2 + rnd() * 30, 1 + rnd() * 2); }
+  // sombras de hojas (una vez, con desenfoque)
+  LEAVES = mk(1400, 2300); const l = LEAVES.getContext("2d");
+  l.fillStyle = "#fff"; l.fillRect(0, 0, 1400, 2300); l.filter = "blur(18px)"; l.fillStyle = "#6E5A4E";
+  for (let i = 0; i < 26; i++) {
+    const x = rnd() * 1400, y = rnd() * 2300, a = rnd() * 6;
+    l.save(); l.translate(x, y); l.rotate(a);
+    for (let j = 0; j < 6; j++) { l.beginPath(); l.ellipse(j * 70, (j % 2 ? 1 : -1) * 40, 90, 30, (j % 2 ? .5 : -.5), 0, Math.PI * 2); l.fill(); }
+    l.restore();
+  }
+  l.filter = "none";
+}
+function makeShadows() {
+  // sombra de cada par: silueta oscura y desenfocada del recorte (para el flat-lay)
+  for (const n of NAMES) {
+    const im = IMG["full_" + n], c = mk(im.width, im.height), g = c.getContext("2d");
+    g.filter = "blur(10px) brightness(0)"; g.drawImage(im, 0, 0); g.filter = "none";
+    IMG["shadow_" + n] = c;
+  }
+}
+function renderFrame(f, opts = {}) {
+  const t0 = f / FPS, sf = opts.subframes || subframesAt(t0);
+  for (let i = 0; i < sf; i++) {
+    let t = clamp(t0 + (sf === 1 ? 0 : (i / (sf - 1) - .5) * SHUTTER / FPS), 0, DUR - 1e-4);
+    for (const c of CUTS) { if (t0 >= c && t < c) t = c; if (t0 < c && t >= c) t = c - 1e-4; }
+    sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.globalAlpha = 1; sctx.globalCompositeOperation = "source-over";
+    drawScene(sctx, t);
+    actx.globalCompositeOperation = i === 0 ? "copy" : "source-over"; actx.globalAlpha = 1 / (i + 1);
+    actx.drawImage(sub, 0, 0);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "copy"; ctx.drawImage(acc, 0, 0);
+  ctx.globalCompositeOperation = "soft-light"; ctx.globalAlpha = .1; ctx.fillStyle = grain[f % grain.length];
+  const ox = Math.floor(hash(f) * 256), oy = Math.floor(hash(f + 3) * 256);
+  ctx.translate(ox, oy); ctx.fillRect(-ox, -oy, W, H);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+}
+async function init(score) {
+  for (const e of score.events) (byKind[e.kind] = byKind[e.kind] || []).push(e);
+  META = score.meta;
+  CUTS = [bt(34)];
+  const jobs = [];
+  for (const n of NAMES) for (const p of ["full", "fullgray"]) jobs.push(loadImg(`assets/${p}_${n}.png`).then(i => IMG[`${p}_${n}`] = i));
+  jobs.push(loadImg("assets/local.jpg").then(i => IMG.local = i));
+  await Promise.all(jobs);
+  await Promise.all(["IDBlack", "IDLight", "IDMedium", "IDSemi", "IDItalic"].map(f => document.fonts.load(`100px ${f}`)));
+  initTextures(); makeShadows();
+  window.READY = true;
+}
+window.init = init; window.renderFrame = renderFrame;
+</script>
+</body>
+</html>
