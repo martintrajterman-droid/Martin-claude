@@ -1,0 +1,567 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TUPÉ · Mirá el verano con otro color</title>
+<style>
+  @font-face { font-family: "IDBlack"; src: local("Inter Display Black"), local("InterDisplay-Black"); }
+  @font-face { font-family: "IDLight"; src: local("Inter Display Light"), local("InterDisplay-Light"); }
+  @font-face { font-family: "IDMedium"; src: local("Inter Display Medium"), local("InterDisplay-Medium"); }
+  @font-face { font-family: "IDSemi"; src: local("Inter Display SemiBold"), local("InterDisplay-SemiBold"); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; height: 100vh; width: auto; margin: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script src="brand.js"></script>
+<script>
+"use strict";
+// ============================================================================
+//  TUPÉ · "Mirá el verano con otro color" — pieza main 20 s · 1080×1920 · 60 fps
+//  El verano está en gris. Sólo a través de cada lente TUPÉ se ve en color,
+//  y cada color de la colección lo tiñe distinto. Cada golpe sale de build/score.json.
+// ============================================================================
+const W = 1080, H = 1920, FPS = 60, DUR = 20, CX = W / 2, CY = H / 2;
+const BEAT = 60 / 96, BAR = 4 * BEAT, bt = b => b * BEAT;
+const C = { bg: "#FAF5F2", ink: "#2B2427", coral: "#E54F4E", gray: "#6F6866", tang: "#F8B414" };
+const NAMES = ["violeta", "caramelo", "fluo", "gris", "nude"];
+const LABEL = { violeta: "lab001 · violeta", caramelo: "lab002 · caramelo", fluo: "lab002 · verde flúo", gris: "lab002 · gris", nude: "lab001 · nude" };
+// cómo tiñe el mundo cada lente (overlay sobre el verano en color)
+const TINT = { caramelo: ["#FF8A1E", .42], fluo: ["#7DFF4F", .36], violeta: ["#B347FF", .42], gris: ["#C2703F", .4], nude: ["#FF8CA6", .36] };
+const ACCENT = { caramelo: "#E87C0F", fluo: "#B5E000", violeta: "#7A3AA0", gris: "#9A8F80", nude: "#B07A64" };
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const E = {
+  outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t), inExpo: t => t <= 0 ? 0 : Math.pow(2, 10 * t - 10),
+  inOutExpo: t => t <= 0 ? 0 : t >= 1 ? 1 : t < .5 ? Math.pow(2, 20 * t - 10) / 2 : (2 - Math.pow(2, -20 * t + 10)) / 2,
+  outCubic: t => 1 - Math.pow(1 - t, 3), inCubic: t => t * t * t,
+  inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  outBack: (t, s = 1.7) => 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2),
+};
+const spring = (t, w = 18, z = .35) => t <= 0 ? 0 : 1 - Math.exp(-z * w * t) * Math.cos(w * Math.sqrt(1 - z * z) * t);
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const rgba = (h, a) => { const [r, g, b] = hexRGB(h); return `rgba(${r},${g},${b},${clamp(a)})`; };
+
+// ---------------------------------------------------------------- partitura
+const byKind = {};
+const evs = k => byKind[k] || [];
+function since(kind, t, f) { let s = Infinity; for (const e of evs(kind)) if (e.t <= t + 1e-9 && (!f || f(e))) s = t - e.t; return s; }
+function pulse(kind, t, decay = 9, f) { const s = since(kind, t, f); return s === Infinity ? 0 : Math.exp(-s * decay); }
+function lastEv(kind, t) { let l = null; for (const e of evs(kind)) if (e.t <= t + 1e-9) l = e; return l; }
+
+// ---------------------------------------------------------------- lienzos e imágenes
+const main = document.getElementById("c"), ctx = main.getContext("2d");
+const mk = (w = W, h = H) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+const sub = mk(), sctx = sub.getContext("2d"), acc = mk(), actx = acc.getContext("2d");
+const lay = mk(), lctx = lay.getContext("2d");
+const IMG = {};
+let META = null;
+function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
+
+// ============================================================================
+//  EL VERANO (dibujado en vectores). mode = "color" | "gray"
+// ============================================================================
+let MODE = "color";
+function col(hex, a = 1) {
+  const [r, g, b] = hexRGB(hex);
+  if (MODE === "color") return `rgba(${r},${g},${b},${a})`;
+  const l = .299 * r + .587 * g + .114 * b, v = Math.round(132 + (l - 132) * .78);
+  return `rgba(${v},${v},${Math.round(v * .985)},${a})`;
+}
+const HORIZON = 1180;
+function drawWorld(g, t, mode) {
+  MODE = mode;
+  const k = pulse("kick", t, 8), slap = pulse("conga", t, 12, e => e.slap);
+  // cielo
+  const sky = g.createLinearGradient(0, 0, 0, HORIZON);
+  sky.addColorStop(0, col("#2E9BD6")); sky.addColorStop(.55, col("#8CD2EE")); sky.addColorStop(1, col("#FFD9A6"));
+  g.fillStyle = sky; g.fillRect(-80, -80, W + 160, HORIZON + 80);
+  // sol: sube un escalón por negra al principio, después respira con el bombo
+  let sunY = 640;
+  const sunRise = evs("sun");
+  if (t < bt(4)) {
+    let p = 0; for (const e of sunRise) p += spring(t - e.t, 14, .45) / 4;
+    sunY = lerp(HORIZON + 40, 640, p);
+  }
+  const sr = 215 * (1 + .03 * k);
+  for (let i = 3; i >= 1; i--) { g.fillStyle = col("#FFC46B", .12 * i); g.beginPath(); g.arc(CX, sunY, sr + i * 46 + 10 * k, 0, Math.PI * 2); g.fill(); }
+  const sg = g.createLinearGradient(0, sunY - sr, 0, sunY + sr);
+  sg.addColorStop(0, col("#FFB23E")); sg.addColorStop(1, col("#FF5A2A"));
+  g.fillStyle = sg; g.beginPath(); g.arc(CX, sunY, sr, 0, Math.PI * 2); g.fill();
+  // nubes planas
+  for (const [x0, y, s, sp] of [[180, 300, 1, 18], [820, 430, .8, -12], [540, 210, .6, 9]]) {
+    const x = x0 + Math.sin(t * .2 + y) * 30 + sp * t;
+    g.fillStyle = col("#FFFFFF", .9);
+    g.beginPath(); g.roundRect(x - 120 * s, y - 26 * s, 240 * s, 52 * s, 26 * s); g.fill();
+    g.beginPath(); g.arc(x - 30 * s, y - 26 * s, 46 * s, 0, Math.PI * 2); g.arc(x + 40 * s, y - 20 * s, 34 * s, 0, Math.PI * 2); g.fill();
+  }
+  // mar con franjas de olas
+  const sea = g.createLinearGradient(0, HORIZON, 0, 1560);
+  sea.addColorStop(0, col("#0B5DA6")); sea.addColorStop(1, col("#1FA0D2"));
+  g.fillStyle = sea; g.fillRect(-80, HORIZON, W + 160, 420);
+  // reflejo del sol en el agua
+  g.fillStyle = col("#FFD27A", .8);
+  for (let i = 0; i < 7; i++) {
+    const y = HORIZON + 22 + i * 44, w = (160 - i * 16) * (1 + .15 * Math.sin(t * 3 + i));
+    g.beginPath(); g.roundRect(CX - w / 2 + Math.sin(t * 2 + i) * 14, y, w, 9, 5); g.fill();
+  }
+  g.strokeStyle = col("#7FD3F7"); g.lineCap = "round";
+  for (let r = 0; r < 6; r++) {
+    const y = HORIZON + 60 + r * 62, amp = 6 + r * 2 + 8 * slap;
+    g.lineWidth = 5 + r;
+    g.beginPath();
+    for (let x = -40; x <= W + 40; x += 20) {
+      const yy = y + Math.sin(x * .02 + t * (2.2 + r * .3) + r) * amp;
+      x === -40 ? g.moveTo(x, yy) : g.lineTo(x, yy);
+    }
+    g.stroke();
+  }
+  // velero
+  const bx = 820 - t * 14;
+  g.fillStyle = col("#FAF5F2"); g.beginPath(); g.moveTo(bx, HORIZON - 120); g.lineTo(bx, HORIZON - 14); g.lineTo(bx + 70, HORIZON - 14); g.closePath(); g.fill();
+  g.fillStyle = col("#E54F4E"); g.beginPath(); g.moveTo(bx - 6, HORIZON - 96); g.lineTo(bx - 6, HORIZON - 14); g.lineTo(bx - 50, HORIZON - 14); g.closePath(); g.fill();
+  g.fillStyle = col("#2B2427"); g.fillRect(bx - 56, HORIZON - 12, 140, 12);
+  // arena
+  g.fillStyle = col("#F3C487");
+  g.beginPath(); g.moveTo(-80, 1560); g.bezierCurveTo(300, 1500, 700, 1600, W + 80, 1520); g.lineTo(W + 80, H + 80); g.lineTo(-80, H + 80); g.closePath(); g.fill();
+  g.fillStyle = col("#E2A15F", .55);
+  g.beginPath(); g.moveTo(-80, 1700); g.bezierCurveTo(400, 1640, 650, 1760, W + 80, 1690); g.lineTo(W + 80, H + 80); g.lineTo(-80, H + 80); g.closePath(); g.fill();
+  // sombrilla a rayas
+  g.save(); g.translate(250, 1590); g.rotate(-.12);
+  g.fillStyle = col("#2B2427"); g.fillRect(-5, -260, 10, 300);
+  const stripes = ["#E54F4E", "#FAF5F2", "#E54F4E", "#FAF5F2", "#E54F4E", "#FAF5F2"];
+  for (let i = 0; i < 6; i++) {
+    const a0 = Math.PI + i / 6 * Math.PI, a1 = Math.PI + (i + 1) / 6 * Math.PI;
+    g.fillStyle = col(stripes[i]);
+    g.beginPath(); g.moveTo(0, -260); g.arc(0, -150, 230, a0, a1); g.closePath(); g.fill();
+  }
+  g.restore();
+  // pelota de playa que rebota con las congas
+  const bounce = Math.abs(Math.sin((t / BEAT) * Math.PI)) * 60 * (t > bt(4) ? 1 : 0);
+  g.save(); g.translate(800, 1690 - bounce); g.rotate(t * 1.5);
+  const seg = ["#E54F4E", "#FAF5F2", "#2E9BD6", "#FAF5F2", "#F8B414", "#FAF5F2"];
+  for (let i = 0; i < 6; i++) { g.fillStyle = col(seg[i]); g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 62, i / 6 * Math.PI * 2, (i + 1) / 6 * Math.PI * 2); g.closePath(); g.fill(); }
+  g.restore();
+  g.fillStyle = col("#2B2427", .12); g.beginPath(); g.ellipse(800, 1760, 60 - bounce * .3, 12, 0, 0, Math.PI * 2); g.fill();
+}
+
+// ============================================================================
+//  ANTEOJOS (fotos recortadas) con el verano en color visto a través del lente
+// ============================================================================
+// o: {name, x, y, w (ancho en px), rot, tint (0..1), sweep, alpha}
+function glassesXf(g, o) {
+  const m = META[o.name], s = o.w / m.w;
+  g.translate(o.x, o.y); g.rotate(o.rot || 0); g.scale(s * (o.sx || 1), s * (o.sy || 1)); g.translate(-m.w / 2, -m.h / 2);
+}
+function drawGlassesWorld(g, t, o) {
+  // 1) el verano en color, levemente magnificado por el lente, teñido por su color
+  lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.globalCompositeOperation = "source-over"; lctx.globalAlpha = 1;
+  lctx.save();
+  lctx.translate(o.x, o.y); lctx.scale(1.05, 1.05); lctx.translate(-o.x, -o.y);
+  drawWorld(lctx, t, "color");
+  lctx.restore();
+  const [tc, ta] = TINT[o.name];
+  const ti = o.tint == null ? 1 : o.tint;
+  if (ti > 0) { lctx.globalCompositeOperation = "overlay"; lctx.globalAlpha = ta * ti; lctx.fillStyle = tc; lctx.fillRect(0, 0, W, H); }
+  // 2) recorte con la forma exacta del lente
+  lctx.globalAlpha = 1; lctx.globalCompositeOperation = "destination-in";
+  lctx.save(); glassesXf(lctx, o); lctx.drawImage(IMG["lens_" + o.name], 0, 0); lctx.restore();
+  lctx.globalCompositeOperation = "source-over";
+  g.save(); g.globalAlpha = o.alpha == null ? 1 : o.alpha;
+  // sombra en el piso del mundo
+  g.save(); g.translate(o.x + 30, o.y + o.w * .26); g.scale(1, .12);
+  const sh = g.createRadialGradient(0, 0, 0, 0, 0, o.w * .5);
+  sh.addColorStop(0, "rgba(40,20,20,.28)"); sh.addColorStop(1, "rgba(40,20,20,0)");
+  g.fillStyle = sh; g.beginPath(); g.arc(0, 0, o.w * .5, 0, Math.PI * 2); g.fill(); g.restore();
+  g.drawImage(lay, 0, 0);
+  // 3) el lente de la foto encima, muy suave: conserva degradé, reflejos y patillas
+  g.save(); glassesXf(g, o); g.globalAlpha *= .26; g.drawImage(IMG["lens_" + o.name], 0, 0); g.restore();
+  // brillo que barre el lente
+  if (o.sweep != null && o.sweep > 0 && o.sweep < 1) {
+    lctx.globalCompositeOperation = "copy"; lctx.fillStyle = "rgba(0,0,0,0)"; lctx.fillRect(0, 0, W, H);
+    lctx.globalCompositeOperation = "source-over";
+    lctx.save(); lctx.translate(o.x + lerp(-o.w * .6, o.w * .6, o.sweep), o.y); lctx.rotate(.45);
+    lctx.fillStyle = "rgba(255,255,255,.55)"; lctx.fillRect(-18, -600, 36, 1200);
+    lctx.fillStyle = "rgba(255,255,255,.3)"; lctx.fillRect(28, -600, 12, 1200); lctx.restore();
+    lctx.globalCompositeOperation = "destination-in";
+    lctx.save(); glassesXf(lctx, o); lctx.drawImage(IMG["lens_" + o.name], 0, 0); lctx.restore();
+    lctx.globalCompositeOperation = "source-over";
+    g.drawImage(lay, 0, 0);
+  }
+  // 4) la montura
+  g.save(); glassesXf(g, o); g.drawImage(IMG["frame_" + o.name], 0, 0); g.restore();
+  g.restore();
+}
+
+// ---------------------------------------------------------------- texto
+function fit(g, fam, txt, maxW, px) { g.font = `${px}px ${fam}`; const w = g.measureText(txt).width; return w > maxW ? px * maxW / w : px; }
+function riseWord(g, txt, x, y, px, fam, color, tb, t, o = {}) {
+  if (t < tb) return;
+  g.save(); g.font = `${px}px ${fam}`;
+  const m = g.measureText(txt), w = m.width, asc = m.actualBoundingBoxAscent;
+  const x0 = (o.align || "center") === "center" ? x - w / 2 : x;
+  g.beginPath(); g.rect(x0 - 60, y - asc - 40, w + 120, asc + 40 + px * .32); g.clip();
+  const sp = spring(t - tb, 22, .42);
+  const out = o.out != null && t > o.out ? E.inCubic(prog(t, o.out, o.out + .2)) : 0;
+  g.fillStyle = color;
+  g.fillText(txt, x0, y + (1 - sp) * (asc + 50) - out * (asc + 70));
+  g.restore();
+}
+function lineOfWords(g, words, y, px, t, colors, out) {
+  g.font = `${px}px IDBlack`;
+  const sp = g.measureText(" ").width, ws = words.map(w => g.measureText(w[0]).width);
+  const tot = ws.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let x = CX - tot / 2;
+  words.forEach(([w, tb], i) => { riseWord(g, w, x, y, px, "IDBlack", colors[i] || colors[0], tb, t, { align: "left", out }); x += ws[i] + sp; });
+}
+function sparkleStar(g, x, y, r, color, rot = 0) {
+  g.save(); g.translate(x, y); g.rotate(rot); g.fillStyle = color; g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, rr = i % 2 ? r * .22 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  g.closePath(); g.fill(); g.restore();
+}
+
+// ============================================================================
+//  ESCENAS
+// ============================================================================
+// recorrido de los anteojos por el mundo: un destino por golpe
+const STOPS = [
+  { b: 4, x: CX, y: 640, w: 900 },       // sobre el sol
+  { b: 5, x: 600, y: 1300, w: 860 },     // el mar
+  { b: 6, x: 380, y: 1480, w: 860 },     // la sombrilla
+  { b: 7, x: CX, y: 1000, w: 940 },      // al centro
+  { b: 8, x: CX, y: 1000, w: 940 },
+  { b: 9, x: 520, y: 760, w: 960 },
+  { b: 10, x: 600, y: 1420, w: 980 },
+  { b: 11, x: CX, y: 1040, w: 1000 },
+];
+function glassesPath(t) {
+  let p = STOPS[0];
+  for (let i = 1; i < STOPS.length; i++) {
+    const a = STOPS[i - 1], b = STOPS[i];
+    if (t >= bt(b.b) - .16) {
+      const q = E.inOutCubic(prog(t, bt(b.b) - .16, bt(b.b) + .02));   // llega justo en el golpe
+      p = { x: lerp(a.x, b.x, q), y: lerp(a.y, b.y, q), w: lerp(a.w, b.w, q), q };
+    }
+  }
+  return p;
+}
+function currentName(t) {
+  const s = lastEv("swap", t);
+  return s ? s.to : "caramelo";
+}
+
+// 1 · verano en gris (0 → 4)  +  2 · los anteojos dan color (4 → 16)
+function sSummer(g, t) {
+  drawWorld(g, t, "gray");
+  const b = t / BEAT;
+  if (b < 2) { /* sólo el mundo apagado */ }
+  // etiqueta mínima
+  const la = E.outCubic(prog(t, bt(2), bt(2.4))) * (1 - prog(t, bt(3.6), bt(4)));
+  if (la > 0) {
+    g.save(); g.globalAlpha = la; g.fillStyle = C.ink; g.font = "38px IDMedium"; g.textAlign = "center"; g.letterSpacing = "10px";
+    g.fillText("VERANO", CX + 5, 360); g.restore();
+  }
+  if (t < bt(4) - .2) return;
+  // entrada: caen desde arriba y aterrizan en el golpe 4
+  let p = glassesPath(t);
+  let y = p.y, rot = 0;
+  if (t < bt(4)) { const q = E.inCubic(prog(t, bt(4) - .2, bt(4))); y = lerp(-400, p.y, q); rot = (1 - q) * -.3; }
+  const land = t >= bt(4) ? Math.exp(-(t - bt(4)) * 9) * Math.cos((t - bt(4)) * 26) : 0;
+  const k = pulse("kick", t, 10);
+  let name = currentName(t), w = p.w;
+  // cambio de modelo: el anterior sale disparado, el nuevo entra con muelle
+  const sw = lastEv("swap", t);
+  let pop = 1;
+  if (sw) { const d = t - sw.t; pop = .86 + .14 * spring(d, 26, .38); rot += (1 - spring(d, 20, .35)) * (sw.b === 8 ? .5 : .18) * (Math.round(sw.b * 2) % 2 ? 1 : -1); }
+  // zoom final: la cámara entra en el lente y el color llena todo
+  const zoom = E.inExpo(prog(t, bt(15.3), bt(16)));
+  w = w * pop * (1 + zoom * 9);
+  const lensDx = (META[name].lens[1][0] + META[name].lens[1][2]) / 2 - META[name].w / 2;
+  const x = lerp(p.x, p.x - lensDx * (w / META[name].w), zoom);
+  y = lerp(y, y + 40 * zoom, zoom);
+  const tint = 1 - zoom;
+  const sweep = since("move", t) < .45 ? since("move", t) / .45 : (since("clap", t) < .4 ? since("clap", t) / .4 : null);
+  drawGlassesWorld(g, t, { name, x, y: y - 10 * k, w, rot, sy: 1 - .05 * land - .02 * k, sx: 1 + .04 * land, tint, sweep });
+  // copy
+  const tc = ACCENT[name];
+  const fade = 1 - prog(t, bt(15.2), bt(15.6));
+  g.save(); g.globalAlpha = fade;
+  if (t < bt(8)) {
+    const px = fit(g, "IDBlack", "MIRÁ EL VERANO", 980, 150);
+    lineOfWords(g, [["MIRÁ", bt(5)], ["EL", bt(6)]], 330, px * 1.25, t, [C.ink], bt(8) - .02);
+    lineOfWords(g, [["VERANO", bt(7)]], 530, px * 1.25, t, [C.ink], bt(8) - .02);
+  } else {
+    const px = 170;
+    lineOfWords(g, [["CON", bt(9)], ["OTRO", bt(10)]], 330, px, t, [C.ink]);
+    if (t >= bt(11)) {
+      // resaltador del color del modelo que se pinta detrás de "COLOR."
+      g.font = `${px * 1.1}px IDBlack`;
+      const w = g.measureText("COLOR.").width, hl = E.outExpo(prog(t, bt(11), bt(11) + .25));
+      g.fillStyle = META[name] ? `rgb(${META[name].frameColor.join(",")})` : tc;
+      g.beginPath(); g.roundRect(CX - w / 2 - 30, 530 - px * .82, (w + 60) * hl, px * .98, 22); g.fill();
+    }
+    lineOfWords(g, [["COLOR.", bt(11)]], 530, px * 1.1, t, [C.ink]);
+  }
+  // etiqueta del modelo en el carrusel
+  if (t >= bt(12)) {
+    g.font = "40px IDMedium"; g.textAlign = "center"; g.fillStyle = C.ink; g.letterSpacing = "3px";
+    const d = since("swap", t);
+    g.globalAlpha = fade * E.outCubic(clamp(d / .12));
+    g.fillText(LABEL[name], CX, 1640 - (1 - E.outCubic(clamp(d / .15))) * 20);
+  }
+  g.restore();
+}
+
+// 3 · DROP "¡QUÉ TUPÉ!" con el verano entero en color (16 → 20)
+const RAIN = { violeta: [260, 1420, -.25], caramelo: [790, 1250, .2], fluo: [540, 1560, -.08], gris: [820, 1690, .28], nude: [270, 1760, -.18] };
+function sDrop(g, t) {
+  drawWorld(g, t, "color");
+  const u = t - bt(16);
+  // flash de color en el golpe
+  const fl = 1 - E.outExpo(prog(u, 0, .3));
+  if (fl > 0) { g.fillStyle = `rgba(255,236,190,${fl * .8})`; g.fillRect(0, 0, W, H); }
+  // los cinco colores caen en corcheas y quedan "tomando sol"
+  for (const e of evs("rain")) {
+    if (t < e.t - .22) continue;
+    const [x, y, r] = RAIN[e.to];
+    const q = E.inCubic(prog(t, e.t - .22, e.t));
+    const d = t - e.t, bounce = d > 0 ? Math.exp(-d * 8) * Math.cos(d * 24) : 0;
+    const m = META[e.to], w = 520, s = w / m.w;
+    g.save(); g.translate(x, lerp(-300, y, q)); g.rotate(r * (1.6 - .6 * q)); g.scale(s * (1 + .08 * bounce), s * (1 - .12 * bounce));
+    g.fillStyle = "rgba(40,20,20,.18)"; g.beginPath(); g.ellipse(0, m.h * .6, m.w * .4, 30, 0, 0, Math.PI * 2); g.fill();
+    g.drawImage(IMG["full_" + e.to], -m.w / 2, -m.h / 2); g.restore();
+  }
+  // tipografía
+  const k = pulse("kick", t, 10);
+  g.save();
+  g.shadowColor = "#2B2427"; g.shadowOffsetY = 14; g.shadowOffsetX = 8; g.shadowBlur = 0;
+  const px = 250 * (1 + .02 * k);
+  riseWord(g, "¡QUÉ", CX, 400, px, "IDBlack", "#FFFFFF", bt(16), t);
+  riseWord(g, "TUPÉ!", CX, 650, px * 1.12, "IDBlack", "#FFFFFF", bt(17), t);
+  g.restore();
+  g.save(); g.globalAlpha = E.outCubic(prog(t, bt(18), bt(18.5))); g.font = "40px IDMedium"; g.textAlign = "center"; g.fillStyle = C.ink; g.letterSpacing = "4px";
+  g.fillStyle = "rgba(250,245,242,.9)"; g.beginPath(); g.roundRect(CX - 340, 712, 680, 70, 35); g.fill();
+  g.fillStyle = C.ink; g.fillText("[ lab.002 ]  sin reglas, sin ley.", CX, 760); g.restore();
+}
+
+// 4 · el número de serie (20 → 24)
+function sSerial(g, t) {
+  bg(g, C.bg);
+  const u = t - bt(20);
+  const m = META.side, sp = spring(u, 11, .45);
+  const w = 920, s = w / m.w;
+  const x = CX - 20 + (1 - sp) * 900, y = 760;
+  g.save(); g.translate(x, y); g.rotate(-.12 + (1 - sp) * .3 + u * .012); g.scale(s, s);
+  g.drawImage(IMG.side, -m.w / 2, -m.h / 2);
+  // punta de la patilla con "lab002" grabado
+  const tipX = m.w * .44 - m.w / 2 + m.w * .5, tipY = m.h * .85 - m.h / 2;
+  g.restore();
+  const ang = -.12 + (1 - sp) * .3 + u * .012;
+  const lx = m.w * .94 - m.w / 2, ly = m.h * .86 - m.h / 2;
+  const ax = x + (lx * Math.cos(ang) - ly * Math.sin(ang)) * s, ay = y + (lx * Math.sin(ang) + ly * Math.cos(ang)) * s;
+  const ca = E.outExpo(prog(t, bt(20.4), bt(20.9)));
+  if (ca > 0) {
+    g.strokeStyle = C.coral; g.lineWidth = 4;
+    g.beginPath(); g.arc(ax, ay, 46 * ca, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(ax - 34, ay + 34); g.lineTo(lerp(ax - 34, 760, ca), lerp(ay + 34, 1170, ca)); g.stroke();
+    g.save(); g.globalAlpha = ca; g.fillStyle = C.coral; g.font = "40px IDSemi"; g.textAlign = "right"; g.letterSpacing = "2px";
+    g.fillText("N° de serie en la patilla", 770, 1225); g.restore();
+  }
+  // contador
+  const counts = evs("count"), vals = [1, 4, 8, 12, 16, 20, 24];
+  let v = 0; counts.forEach((e, i) => { if (t >= e.t) v = vals[i]; });
+  if (t >= bt(22)) v = 24;
+  if (v > 0) {
+    const kk = pulse("count", t, 18) + pulse("count_land", t, 6) * 1.5;
+    g.save(); g.fillStyle = C.ink; g.textAlign = "center";
+    g.font = `${300 * (1 + .04 * kk)}px IDBlack`;
+    g.fillText(`N° ${String(v).padStart(2, "0")}`, CX, 1500);
+    g.restore();
+  }
+  riseWord(g, "21–24 piezas por color.", CX, 1620, 64, "IDSemi", C.ink, bt(22), t);
+  riseWord(g, "Hecho en Argentina · 100% acetato argentino", CX, 1700, 40, "IDMedium", C.gray, bt(23), t);
+}
+
+// 5 · tuyo y de nadie más (24 → 28)
+function sYours(g, t) {
+  bg(g, C.bg);
+  const chosen = 2;            // verde flúo
+  const ch = since("choose", t);
+  const cq = ch === Infinity ? 0 : E.inOutCubic(clamp(ch / .5));
+  for (let i = 0; i < 5; i++) {
+    const e = evs("grid")[i]; if (!e || t < e.t - .12) continue;
+    const name = NAMES[i], m = META[name];
+    const a = spring(t - e.t + .06, 16, .45);
+    const w0 = 600, y0 = 640 + i * 235;
+    const isC = i === chosen;
+    const gq = ch === Infinity ? 0 : clamp(ch / .18);                    // se apagan…
+    const oq = ch === Infinity ? 0 : E.inOutCubic(prog(ch, .22, .62));   // …y se van
+    const w = isC ? lerp(w0, 980, cq) : w0;
+    const x = isC ? CX : CX + (i % 2 ? 1 : -1) * oq * 1100 + (1 - a) * (i % 2 ? 900 : -900);
+    const y = isC ? lerp(y0, 1060, cq) : y0;
+    const s = w / m.w;
+    g.save(); g.translate(x, y); g.scale(s, s);
+    if (!isC && gq > 0) {
+      g.drawImage(IMG["fullgray_" + name], -m.w / 2, -m.h / 2);
+      g.globalAlpha = 1 - gq; g.drawImage(IMG["full_" + name], -m.w / 2, -m.h / 2);
+    } else g.drawImage(IMG["full_" + name], -m.w / 2, -m.h / 2);
+    g.restore();
+  }
+  // texto
+  const ln = evs("line");
+  riseWord(g, "Un anteojo que es tuyo", CX, 380, 88, "IDBlack", C.ink, ln[0] ? ln[0].t : bt(26), t);
+  riseWord(g, "y de nadie más.", CX, 490, 88, "IDBlack", C.coral, ln[1] ? ln[1].t : bt(27), t);
+  // sello del número de serie
+  const st = since("stamp", t);
+  if (st !== Infinity) {
+    const sc = 1 + 1.4 * Math.exp(-st * 16);
+    g.save(); g.translate(CX + 200, 1420); g.rotate(-.14); g.scale(sc, sc);
+    g.globalAlpha = clamp(st / .06);
+    g.strokeStyle = C.coral; g.lineWidth = 6; g.beginPath(); g.roundRect(-190, -72, 380, 144, 18); g.stroke();
+    g.fillStyle = C.coral; g.font = "92px IDBlack"; g.textAlign = "center"; g.fillText("N° 07/24", 0, 32);
+    g.restore();
+  }
+}
+
+// 6 · cierre (28 → 32)
+function sEnd(g, t) {
+  bg(g, C.bg);
+  const k = pulse("kick", t, 10);
+  const s = 6.2, lx = CX - 63.5 * s, ly = 640 - 9.5 * s;
+  const times = evs("piece").map(e => e.t);
+  drawTupeT(g, lx, ly, s, times, t);
+  const c = evs("cta");
+  g.save(); g.textAlign = "center"; g.fillStyle = C.gray;
+  const a1 = E.outCubic(prog(t, c[0].t, c[0].t + .3));
+  g.globalAlpha = a1; g.font = "62px IDLight"; g.fillText("encontrá", CX + 6, 470 + (1 - a1) * 26);
+  g.globalAlpha = 1; g.font = "58px IDLight";
+  const url = "en carladisi.com/tupe", n = Math.floor(clamp((t - c[0].t) / .35) * url.length);
+  g.fillText(url.slice(0, n), CX, 850);
+  const ul = E.inOutCubic(prog(t, c[0].t + .35, c[0].t + .7));
+  if (ul > 0) { const w = g.measureText(url).width; g.fillStyle = C.coral; g.fillRect(CX - w / 2, 872, w * ul, 4); }
+  g.restore();
+  // el local: aparece en gris y se pinta de color con el destello final
+  const ca = spring(t - c[1].t, 14, .5);
+  if (t >= c[1].t) {
+    const im = IMG.local, cw = 880, chh = 440, x = CX - cw / 2, y = 980 + (1 - ca) * 300;
+    g.save(); g.globalAlpha = clamp((t - c[1].t) / .2);
+    g.beginPath(); g.roundRect(x, y, cw, chh, 28); g.clip();
+    const sr = Math.max(cw / im.width, chh / im.height), dw = im.width * sr, dh = im.height * sr;
+    g.drawImage(IMG.localGray, x + (cw - dw) / 2, y + (chh - dh) / 2, dw, dh);
+    const sp = since("sparkle", t);
+    if (sp !== Infinity) {
+      const r = E.outExpo(clamp(sp / .6)) * 700;
+      g.save(); g.beginPath(); g.ellipse(x + cw / 2, y + chh / 2, r * 1.3, r * .8, 0, 0, Math.PI * 2); g.clip();
+      g.drawImage(im, x + (cw - dw) / 2, y + (chh - dh) / 2, dw, dh); g.restore();
+    }
+    g.restore();
+    g.save(); g.globalAlpha = clamp((t - c[1].t - .1) / .3); g.fillStyle = C.ink; g.font = "42px IDMedium"; g.textAlign = "center"; g.letterSpacing = "2px";
+    g.fillText("Probalos en Palermo Soho", CX, 1500); g.restore();
+  }
+  // firma
+  const pz = E.inOutCubic(prog(t, bt(28.3), bt(30.5)));
+  drawSignature(g, CX - SIGN.w * 3 / 2, 1600 - 13 * 3, 3, pz, C.coral);
+  // destello sobre el acento
+  const d = since("sparkle", t);
+  if (d < .8) {
+    const cols = [C.tang, "#B5E000", C.coral, "#7A3AA0"];
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2 + .3, r = 40 + E.outExpo(clamp(d / .5)) * 150, sz = 22 * Math.max(0, 1 - d / .7);
+      if (sz > 0) sparkleStar(g, lx + 103.5 * s + Math.cos(a) * r, ly - 6 * s + Math.sin(a) * r, sz, cols[i % 4], d * 4);
+    }
+  }
+}
+// logo TUPÉ con piezas que impactan en sus semicorcheas
+const TP = {}; for (const k of TUPE.order) TP[k] = tupePath(k);
+const FROM = { bar: [-160, 0], tStem: [0, -120], u: [0, 120], pStem: [0, -120], pBowl: [140, 0], eDome: [0, 110], eStem: [-90, 0], accent: [0, -150] };
+function drawTupeT(g, x, y, s, times, t) {
+  g.save(); g.translate(x, y); g.scale(s, s * 1.025);
+  TUPE.order.forEach((k, i) => {
+    const tp = times[i]; if (t < tp - .12) return;
+    const q = E.inCubic(prog(t, tp - .12, tp)), [fx, fy] = FROM[k];
+    const d = t >= tp ? Math.exp(-(t - tp) * 11) * Math.cos((t - tp) * 30) : 0;
+    g.save(); g.translate(fx * (1 - q), fy * (1 - q)); g.scale(1 + .1 * d, 1 - .14 * d);
+    g.fillStyle = k === "accent" ? C.tang : C.ink; g.fill(TP[k]); g.restore();
+  });
+  if (t >= times[7]) { g.globalAlpha = clamp((t - times[7]) / .2); drawCopyright(g, 123.5, 3.2, 4.2, .85, C.ink); }
+  g.restore();
+}
+function bg(g, c) { g.fillStyle = c; g.fillRect(-60, -60, W + 120, H + 120); }
+
+// ============================================================================
+//  LÍNEA DE TIEMPO
+// ============================================================================
+function drawScene(g, t) {
+  g.save();
+  const imp = [[16, 1], [28, .6], [20, .3]].reduce((a, [b, amt]) => a + (t >= bt(b) ? Math.exp(-(t - bt(b)) * 9) * amt : 0), 0);
+  if (imp > .01) g.translate(Math.sin(t * 93) * 14 * imp, Math.cos(t * 71) * 14 * imp);
+  const b = t / BEAT;
+  if (b < 16) sSummer(g, t);
+  else if (b < 20) sDrop(g, t);
+  else if (b < 24) sSerial(g, t);
+  else if (b < 28) sYours(g, t);
+  else sEnd(g, t);
+  g.restore();
+}
+
+// ============================================================================
+//  RENDER: motion blur real que nunca cruza un corte
+// ============================================================================
+const CUTS = [bt(20), bt(24), bt(28)];
+function subframesAt(t) {
+  const b = t / BEAT;
+  for (const e of evs("swap")) if (t >= e.t - .02 && t < e.t + .14) return 16;
+  for (const s of [4, 5, 6, 7, 9, 10, 11]) if (t >= bt(s) - .18 && t < bt(s) + .06) return 14;
+  if (b >= 15.2 && b < 16.2) return 18;
+  if (b >= 17.6 && b < 20) return 12;
+  if (b >= 20 && b < 20.6) return 12;
+  return 6;
+}
+const SHUTTER = .5;
+let grain = [];
+function initGrain() {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 6; k++) {
+    const c = mk(256, 256), g = c.getContext("2d"), im = g.createImageData(256, 256);
+    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (rnd() + rnd() - 1) * 110; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    g.putImageData(im, 0, 0); grain.push(ctx.createPattern(c, "repeat"));
+  }
+}
+function renderFrame(f, opts = {}) {
+  const t0 = f / FPS, sf = opts.subframes || subframesAt(t0);
+  for (let i = 0; i < sf; i++) {
+    let t = clamp(t0 + (sf === 1 ? 0 : (i / (sf - 1) - .5) * SHUTTER / FPS), 0, DUR - 1e-4);
+    for (const c of CUTS) { if (t0 >= c && t < c) t = c; if (t0 < c && t >= c) t = c - 1e-4; }
+    sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.globalAlpha = 1; sctx.globalCompositeOperation = "source-over";
+    drawScene(sctx, t);
+    actx.globalCompositeOperation = i === 0 ? "copy" : "source-over"; actx.globalAlpha = 1 / (i + 1);
+    actx.drawImage(sub, 0, 0);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "copy"; ctx.drawImage(acc, 0, 0);
+  ctx.globalCompositeOperation = "soft-light"; ctx.globalAlpha = .09; ctx.fillStyle = grain[f % grain.length];
+  const ox = Math.floor(hash(f) * 256), oy = Math.floor(hash(f + 3) * 256);
+  ctx.translate(ox, oy); ctx.fillRect(-ox, -oy, W, H);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+}
+async function init(score) {
+  for (const e of score.events) (byKind[e.kind] = byKind[e.kind] || []).push(e);
+  META = score.meta;
+  const jobs = [];
+  for (const n of NAMES) for (const p of ["frame", "lens", "full", "fullgray"]) jobs.push(loadImg(`assets/${p}_${n}.png`).then(i => IMG[`${p}_${n}`] = i));
+  jobs.push(loadImg("assets/side_fluo.png").then(i => IMG.side = i));
+  jobs.push(loadImg("assets/local.jpg").then(i => IMG.local = i));
+  jobs.push(loadImg("assets/local_gray.jpg").then(i => IMG.localGray = i));
+  await Promise.all(jobs);
+  await Promise.all(["IDBlack", "IDLight", "IDMedium", "IDSemi"].map(f => document.fonts.load(`100px ${f}`)));
+  initGrain();
+  window.READY = true;
+}
+window.init = init; window.renderFrame = renderFrame;
+</script>
+</body>
+</html>
