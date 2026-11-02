@@ -1,0 +1,573 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TUPÉ · Persianas</title>
+<style>
+  @font-face { font-family: "IDBlack"; src: local("Inter Display Black"), local("InterDisplay-Black"); }
+  @font-face { font-family: "IDLight"; src: local("Inter Display Light"), local("InterDisplay-Light"); }
+  @font-face { font-family: "IDMedium"; src: local("Inter Display Medium"), local("InterDisplay-Medium"); }
+  @font-face { font-family: "IDSemi"; src: local("Inter Display SemiBold"), local("InterDisplay-SemiBold"); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; height: 100vh; width: auto; margin: auto; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script src="brand.js"></script>
+<script>
+"use strict";
+// ============================================================================
+//  TUPÉ · "Mirá el verano con otro color" — versión PERSIANAS · 20 s · 1080×1920 · 60 fps
+//  La pantalla es una persiana de 5 tiras (una por color de la colección).
+//  Se cortan, se desalinean y se alinean con el golpe; giran en 3D del gris al color.
+// ============================================================================
+const W = 1080, H = 1920, FPS = 60, DUR = 20, CX = W / 2, CY = H / 2;
+const BEAT = .5, bt = b => b * BEAT;
+const NS = 5, SH = H / NS;
+const C = { bg: "#FAF5F2", ink: "#2B2427", coral: "#E54F4E", gray: "#6F6866", tang: "#F8B414" };
+const NAMES = ["violeta", "caramelo", "fluo", "gris", "nude"];
+const LABEL = { violeta: "lab001 · violeta", caramelo: "lab002 · caramelo", fluo: "lab002 · verde flúo", gris: "lab002 · gris", nude: "lab001 · nude" };
+const TINT = { caramelo: ["#FF8A1E", .45], fluo: ["#7DFF4F", .4], violeta: ["#B347FF", .45], gris: ["#C2703F", .42], nude: ["#FF8CA6", .4] };
+const BLOCK = { fluo: "#D9F53B", violeta: "#5B2E7E", caramelo: "#F08A1C", gris: "#CFC6B8", nude: "#B98068" };
+const BLOCK_INK = { fluo: "#2B2427", violeta: "#FAF5F2", caramelo: "#2B2427", gris: "#2B2427", nude: "#FAF5F2" };
+const FLIP_ORDER = [2, 1, 3, 0, 4];
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const E = {
+  outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t), inExpo: t => t <= 0 ? 0 : Math.pow(2, 10 * t - 10),
+  inOutExpo: t => t <= 0 ? 0 : t >= 1 ? 1 : t < .5 ? Math.pow(2, 20 * t - 10) / 2 : (2 - Math.pow(2, -20 * t + 10)) / 2,
+  outCubic: t => 1 - Math.pow(1 - t, 3), inCubic: t => t * t * t,
+  inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+};
+const spring = (t, w = 18, z = .35) => t <= 0 ? 0 : 1 - Math.exp(-z * w * t) * Math.cos(w * Math.sqrt(1 - z * z) * t);
+const kickback = (d, w = 22, z = .3) => d < 0 ? 0 : Math.exp(-z * w * d) * Math.cos(w * d);   // impulso amortiguado
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const rgba = (h, a) => { const [r, g, b] = hexRGB(h); return `rgba(${r},${g},${b},${clamp(a)})`; };
+
+// ---------------------------------------------------------------- partitura
+const byKind = {};
+const evs = k => byKind[k] || [];
+function since(kind, t, f) { let s = Infinity; for (const e of evs(kind)) if (e.t <= t + 1e-9 && (!f || f(e))) s = t - e.t; return s; }
+function pulse(kind, t, decay = 9, f) { const s = since(kind, t, f); return s === Infinity ? 0 : Math.exp(-s * decay); }
+function lastEv(kind, t) { let l = null; for (const e of evs(kind)) if (e.t <= t + 1e-9) l = e; return l; }
+
+// ---------------------------------------------------------------- lienzos e imágenes
+const main = document.getElementById("c"), ctx = main.getContext("2d");
+const mk = (w = W, h = H) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+const sub = mk(), sctx = sub.getContext("2d"), acc = mk(), actx = acc.getContext("2d");
+const FG = mk(), fg = FG.getContext("2d");     // cara gris
+const CW = mk(), cw = CW.getContext("2d");     // verano en color
+const IMG = {}; let META = null;
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+function bg(g, c) { g.fillStyle = c; g.fillRect(-60, -60, W + 120, H + 120); }
+
+let MODE = "color";
+function col(hex, a = 1) {
+  const [r, g, b] = hexRGB(hex);
+  if (MODE === "color") return `rgba(${r},${g},${b},${a})`;
+  const l = .299 * r + .587 * g + .114 * b, v = Math.round(132 + (l - 132) * .78);
+  return `rgba(${v},${v},${Math.round(v * .985)},${a})`;
+}
+const HORIZON = 1180;
+function drawWorld(g, t, mode) {
+  MODE = mode;
+  const k = pulse("kick", t, 8), slap = pulse("conga", t, 12, e => e.slap);
+  // cielo
+  const sky = g.createLinearGradient(0, 0, 0, HORIZON);
+  sky.addColorStop(0, col("#2E9BD6")); sky.addColorStop(.55, col("#8CD2EE")); sky.addColorStop(1, col("#FFD9A6"));
+  g.fillStyle = sky; g.fillRect(-80, -80, W + 160, HORIZON + 80);
+  // sol: sube un escalón por negra al principio, después respira con el bombo
+  let sunY = 640;
+  const sunRise = evs("sun");
+  if (t < bt(4)) {
+    let p = 0; p = spring(t - .05, 5, .55);
+    sunY = lerp(HORIZON + 40, 640, p);
+  }
+  const sr = 215 * (1 + .03 * k);
+  for (let i = 3; i >= 1; i--) { g.fillStyle = col("#FFC46B", .12 * i); g.beginPath(); g.arc(CX, sunY, sr + i * 46 + 10 * k, 0, Math.PI * 2); g.fill(); }
+  const sg = g.createLinearGradient(0, sunY - sr, 0, sunY + sr);
+  sg.addColorStop(0, col("#FFB23E")); sg.addColorStop(1, col("#FF5A2A"));
+  g.fillStyle = sg; g.beginPath(); g.arc(CX, sunY, sr, 0, Math.PI * 2); g.fill();
+  // nubes planas
+  for (const [x0, y, s, sp] of [[180, 300, 1, 18], [820, 430, .8, -12], [540, 210, .6, 9]]) {
+    const x = x0 + Math.sin(t * .2 + y) * 30 + sp * t;
+    g.fillStyle = col("#FFFFFF", .9);
+    g.beginPath(); g.roundRect(x - 120 * s, y - 26 * s, 240 * s, 52 * s, 26 * s); g.fill();
+    g.beginPath(); g.arc(x - 30 * s, y - 26 * s, 46 * s, 0, Math.PI * 2); g.arc(x + 40 * s, y - 20 * s, 34 * s, 0, Math.PI * 2); g.fill();
+  }
+  // mar con franjas de olas
+  const sea = g.createLinearGradient(0, HORIZON, 0, 1560);
+  sea.addColorStop(0, col("#0B5DA6")); sea.addColorStop(1, col("#1FA0D2"));
+  g.fillStyle = sea; g.fillRect(-80, HORIZON, W + 160, 420);
+  // reflejo del sol en el agua
+  g.fillStyle = col("#FFD27A", .8);
+  for (let i = 0; i < 7; i++) {
+    const y = HORIZON + 22 + i * 44, w = (160 - i * 16) * (1 + .15 * Math.sin(t * 3 + i));
+    g.beginPath(); g.roundRect(CX - w / 2 + Math.sin(t * 2 + i) * 14, y, w, 9, 5); g.fill();
+  }
+  g.strokeStyle = col("#7FD3F7"); g.lineCap = "round";
+  for (let r = 0; r < 6; r++) {
+    const y = HORIZON + 60 + r * 62, amp = 6 + r * 2 + 8 * slap;
+    g.lineWidth = 5 + r;
+    g.beginPath();
+    for (let x = -40; x <= W + 40; x += 20) {
+      const yy = y + Math.sin(x * .02 + t * (2.2 + r * .3) + r) * amp;
+      x === -40 ? g.moveTo(x, yy) : g.lineTo(x, yy);
+    }
+    g.stroke();
+  }
+  // velero
+  const bx = 820 - t * 14;
+  g.fillStyle = col("#FAF5F2"); g.beginPath(); g.moveTo(bx, HORIZON - 120); g.lineTo(bx, HORIZON - 14); g.lineTo(bx + 70, HORIZON - 14); g.closePath(); g.fill();
+  g.fillStyle = col("#E54F4E"); g.beginPath(); g.moveTo(bx - 6, HORIZON - 96); g.lineTo(bx - 6, HORIZON - 14); g.lineTo(bx - 50, HORIZON - 14); g.closePath(); g.fill();
+  g.fillStyle = col("#2B2427"); g.fillRect(bx - 56, HORIZON - 12, 140, 12);
+  // arena
+  g.fillStyle = col("#F3C487");
+  g.beginPath(); g.moveTo(-80, 1560); g.bezierCurveTo(300, 1500, 700, 1600, W + 80, 1520); g.lineTo(W + 80, H + 80); g.lineTo(-80, H + 80); g.closePath(); g.fill();
+  g.fillStyle = col("#E2A15F", .55);
+  g.beginPath(); g.moveTo(-80, 1700); g.bezierCurveTo(400, 1640, 650, 1760, W + 80, 1690); g.lineTo(W + 80, H + 80); g.lineTo(-80, H + 80); g.closePath(); g.fill();
+  // sombrilla a rayas
+  g.save(); g.translate(250, 1590); g.rotate(-.12);
+  g.fillStyle = col("#2B2427"); g.fillRect(-5, -260, 10, 300);
+  const stripes = ["#E54F4E", "#FAF5F2", "#E54F4E", "#FAF5F2", "#E54F4E", "#FAF5F2"];
+  for (let i = 0; i < 6; i++) {
+    const a0 = Math.PI + i / 6 * Math.PI, a1 = Math.PI + (i + 1) / 6 * Math.PI;
+    g.fillStyle = col(stripes[i]);
+    g.beginPath(); g.moveTo(0, -260); g.arc(0, -150, 230, a0, a1); g.closePath(); g.fill();
+  }
+  g.restore();
+  // pelota de playa que rebota con las congas
+  const bounce = Math.abs(Math.sin((t / BEAT) * Math.PI)) * 60 * (t > bt(4) ? 1 : 0);
+  g.save(); g.translate(800, 1690 - bounce); g.rotate(t * 1.5);
+  const seg = ["#E54F4E", "#FAF5F2", "#2E9BD6", "#FAF5F2", "#F8B414", "#FAF5F2"];
+  for (let i = 0; i < 6; i++) { g.fillStyle = col(seg[i]); g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, 62, i / 6 * Math.PI * 2, (i + 1) / 6 * Math.PI * 2); g.closePath(); g.fill(); }
+  g.restore();
+  g.fillStyle = col("#2B2427", .12); g.beginPath(); g.ellipse(800, 1760, 60 - bounce * .3, 12, 0, 0, Math.PI * 2); g.fill();
+}
+
+
+
+// ---------------------------------------------------------------- texto
+function riseWord(g, txt, x, y, px, fam, color, tb, t, o = {}) {
+  if (t < tb) return;
+  g.save(); g.font = `${px}px ${fam}`;
+  if (o.ls) g.letterSpacing = o.ls;
+  const m = g.measureText(txt), w = m.width, asc = m.actualBoundingBoxAscent;
+  const x0 = (o.align || "center") === "center" ? x - w / 2 : x;
+  g.beginPath(); g.rect(x0 - 60, y - asc - 40, w + 120, asc + 40 + px * .32); g.clip();
+  const sp = spring(t - tb, 22, .42);
+  g.fillStyle = color; g.fillText(txt, x0, y + (1 - sp) * (asc + 50));
+  g.restore();
+}
+function drawPair(g, name, x, y, w, rot = 0, gray = false) {
+  const m = META[name], s = w / m.w;
+  g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s);
+  g.drawImage(IMG[(gray ? "fullgray_" : "full_") + name], -m.w / 2, -m.h / 2); g.restore();
+}
+function sparkleStar(g, x, y, r, color, rot = 0) {
+  g.save(); g.translate(x, y); g.rotate(rot); g.fillStyle = color; g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, rr = i % 2 ? r * .22 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  g.closePath(); g.fill(); g.restore();
+}
+
+// ============================================================================
+//  PERSIANA: desplazamiento horizontal por tira (impulsos sincronizados)
+// ============================================================================
+function stripDx(i, t) {
+  let dx = 0;
+  const dir = i % 2 ? 1 : -1;
+  // desalineado del compás 1 (y su realineado)
+  const sh = since("shift", t), al = since("align", t);
+  if (sh !== Infinity) dx += dir * (70 + i * 26) * (al === Infinity ? spring(sh, 20, .45) : 1 - spring(al, 22, .5));
+  // cada palabra/glitch/cambio de texto: golpe que desalinea y vuelve con rebote
+  for (const k of ["word", "textswap", "glitch"]) {
+    const s = since(k, t);
+    if (s !== Infinity) dx += dir * (k === "glitch" ? 180 : 110) * (1 + i * .25) * kickback(s, 20, .32) * (hash(i + (k === "glitch" ? 9 : 3)) * .6 + .7);
+  }
+  return dx;
+}
+// progreso del giro (0 = cara gris, 1 = cara color)
+function flipP(i, t) {
+  const order = FLIP_ORDER.indexOf(i);
+  const e = evs("flip")[order]; if (!e) return 0;
+  return E.inOutCubic(prog(t, e.t - .2, e.t + .04));
+}
+function drawSlice(g, i, sy, dx, face) {
+  const y0 = i * SH, yc = y0 + SH / 2;
+  g.save();
+  g.beginPath(); g.rect(0, y0, W, SH); g.clip();
+  g.translate(0, yc); g.scale(1, Math.max(sy, .002)); g.translate(0, -yc);
+  face(g, y0, dx);
+  if (sy < 1) { g.fillStyle = `rgba(20,14,16,${(1 - sy) * .55})`; g.fillRect(0, y0, W, SH); }
+  g.restore();
+}
+function grayFace(g, y0, dx) { g.drawImage(FG, 0, y0, W, SH, dx, y0, W, SH); g.drawImage(FG, 0, y0, W, SH, dx + (dx > 0 ? -W : W), y0, W, SH); }
+function colorFace(name, t, i, o = {}) {
+  return (g, y0, dx) => {
+    const par = (o.worldDx || 0) * .35 + dx;
+    g.drawImage(CW, 0, y0, W, SH, par, y0, W, SH);
+    g.drawImage(CW, 0, y0, W, SH, par + (par > 0 ? -W : W), y0, W, SH);
+    const [tc, ta] = TINT[name];
+    g.save(); g.globalCompositeOperation = "overlay"; g.globalAlpha = ta; g.fillStyle = tc; g.fillRect(0, y0, W, SH); g.restore();
+    // el par del color en su tira (cinta transportadora con período P)
+    const P = 1500, off = (o.pairDx || 0) + dx;
+    const base = ((off % P) + P) % P;
+    for (const x of [CX + base, CX + base - P]) {
+      if (x < -500 || x > W + 500) continue;
+      g.save(); g.fillStyle = "rgba(30,20,20,.18)"; g.beginPath(); g.ellipse(x + 20, y0 + SH * .82, 330, 22, 0, 0, Math.PI * 2); g.fill(); g.restore();
+      drawPair(g, name, x, y0 + SH * .5, 760, (o.rot || 0));
+    }
+    // etiqueta
+    if (o.label > 0) {
+      g.save(); g.globalAlpha = o.label; g.font = "34px IDSemi"; g.letterSpacing = "2px";
+      const txt = LABEL[name], tw = g.measureText(txt).width;
+      const lx = (i % 2 ? W - 60 - tw - 36 : 60), ly = y0 + 34;
+      g.fillStyle = "rgba(250,245,242,.92)"; g.beginPath(); g.roundRect(lx, ly, tw + 36, 54, 27); g.fill();
+      g.fillStyle = C.ink; g.fillText(txt, lx + 18, ly + 38); g.restore();
+    }
+  };
+}
+function separators(g, t, a = 1) {
+  g.save(); g.fillStyle = rgba(C.bg, a);
+  for (const e of evs("line")) {
+    const p = E.outExpo(prog(t, e.t - .05, e.t + .25));
+    if (p <= 0) continue;
+    const y = (e.i + 1) * SH;
+    const dir = e.i % 2 ? -1 : 1;
+    if (dir > 0) g.fillRect(0, y - 3, W * p, 6); else g.fillRect(W * (1 - p), y - 3, W * p, 6);
+  }
+  g.restore();
+}
+
+// ============================================================================
+//  BLOQUES
+// ============================================================================
+// 1-3 · verano gris en tiras → giran al color (0 → 8 s)
+function sBlinds(g, t) {
+  // cara gris: mundo + palabras
+  fg.setTransform(1, 0, 0, 1, 0, 0); fg.globalAlpha = 1; fg.globalCompositeOperation = "source-over";
+  drawWorld(fg, t, "gray");
+  const swapT = bt(8);
+  if (t < swapT) {
+    fg.font = "230px IDBlack";
+    const wM = fg.measureText("MIRÁ ").width, wE = fg.measureText("EL").width, x0 = CX - (wM + wE) / 2;
+    riseWord(fg, "MIRÁ", x0, 860, 230, "IDBlack", C.ink, bt(4), t, { align: "left" });
+    riseWord(fg, "EL", x0 + wM, 860, 230, "IDBlack", C.ink, bt(5), t, { align: "left" });
+    riseWord(fg, "VERANO", CX, 1250, 250, "IDBlack", C.ink, bt(6), t);
+  } else {
+    riseWord(fg, "CON OTRO", CX, 860, 210, "IDBlack", C.ink, swapT, t);
+    riseWord(fg, "COLOR.", CX, 1250, 260, "IDBlack", C.ink, swapT + .04, t);
+  }
+  // cara color
+  cw.setTransform(1, 0, 0, 1, 0, 0); cw.globalAlpha = 1; cw.globalCompositeOperation = "source-over";
+  drawWorld(cw, t, "color");
+  const lab = E.outCubic(prog(t, bt(11.5), bt(11.5) + .2));
+  // cinta transportadora (compás 4): un recorrido completo por golpe, que frena en el golpe
+  let conv = 0;
+  for (let k = 12; k < 16; k++) conv += E.inOutExpo(prog(t, bt(k) - .22, bt(k) + .02));
+  // barajado (compás 5)
+  const sh = evs("shuffle"); let nSh = 0, lastSh = null;
+  for (const e of sh) if (t >= e.t - .06) { nSh++; lastSh = e; }
+  for (let i = 0; i < NS; i++) {
+    const dir = i % 2 ? 1 : -1;
+    const pairDx = dir * conv * 1500, worldDx = dir * conv * 200;
+    let p = flipP(i, t), dx = stripDx(i, t);
+    const name = NAMES[(i + nSh) % NS];
+    if (p <= 0) { drawSlice(g, i, 1, dx, grayFace); continue; }
+    if (p < 1) {
+      const c = Math.cos(p * Math.PI);
+      drawSlice(g, i, Math.abs(c), dx, c >= 0 ? grayFace : colorFace(name, t, i, { label: 0 }));
+      continue;
+    }
+    // giro rápido entre colores en el barajado
+    if (lastSh && t < lastSh.t + .1 && nSh > 0) {
+      const q = prog(t, lastSh.t - .06, lastSh.t + .1), c = Math.cos(q * Math.PI);
+      const prev = NAMES[(i + nSh - 1) % NS];
+      drawSlice(g, i, Math.abs(c), dx, colorFace(c >= 0 ? prev : name, t, i, { label: lab, pairDx, worldDx }));
+      continue;
+    }
+    const bob = pulse("kick", t, 10) * 6;
+    drawSlice(g, i, 1, dx, colorFace(name, t, i, { label: lab, pairDx, worldDx, rot: (i % 2 ? 1 : -1) * .02 * bob }));
+  }
+  separators(g, t, 1);
+}
+// colapso: las cinco tiras se aplastan hacia la línea central
+function sCollapse(g, t) {
+  bg(g, C.ink);
+  const q = E.inExpo(prog(t, bt(19.5), bt(20)));
+  for (let i = 0; i < NS; i++) {
+    const y0 = i * SH, yc = y0 + SH / 2, ny = lerp(yc, CY, q);
+    g.save(); g.translate(0, ny); g.scale(1, 1 - q * .985); g.translate(0, -yc);
+    g.beginPath(); g.rect(0, y0, W, SH); g.clip();
+    g.translate(0, 0);
+    sBlindsStrip(g, t, i);
+    g.restore();
+  }
+}
+function sBlindsStrip(g, t, i) {
+  // versión de una tira para el colapso (siempre color, nombre final del barajado)
+  const nSh = evs("shuffle").filter(e => t >= e.t - .06).length;
+  const name = NAMES[(i + nSh) % NS];
+  colorFace(name, t, i, { label: 1, pairDx: 0 })(g, i * SH, 0);
+}
+
+// 4 · DROP: cortes de color-blocking (10 → 12 s)
+function sBlocks(g, t) {
+  const e = lastEv("cut", t) || evs("cut")[0];
+  const name = e.to, d = t - e.t;
+  bg(g, BLOCK[name]);
+  // franjas de la persiana como textura gráfica del fondo
+  g.fillStyle = "rgba(255,255,255,.08)";
+  for (let i = 1; i < NS; i++) g.fillRect(0, i * SH - 2, W, 4);
+  const ink = BLOCK_INK[name];
+  const pop = spring(d, 20, .4);
+  const w = 1000 * (.82 + .18 * pop) * (1 + .03 * pulse("kick", t, 10));
+  drawPair(g, name, CX, 1180, w, (1 - pop) * (Math.round(e.b * 2) % 2 ? .12 : -.12));
+  riseWord(g, "¡QUÉ", CX, 470, 260, "IDBlack", ink, bt(20), t);
+  riseWord(g, "TUPÉ!", CX, 730, 290, "IDBlack", ink, bt(21), t);
+  g.save(); g.textAlign = "center"; g.fillStyle = ink;
+  g.font = "40px IDSemi"; g.letterSpacing = "3px"; g.globalAlpha = E.outCubic(clamp(d / .12));
+  g.fillText(LABEL[name], CX, 1530);
+  g.restore();
+}
+
+// 5 · cartel split-flap con el número de serie (12 → 14 s)
+const FLAP_TXT = "N°07/24", FLAP_GLYPHS = "0123456789N°/#ABCDEFGH";
+function flapChar(j, t) {
+  const t0 = bt(24), land = t0 + .12 + j * .085;
+  if (t < t0) return [" ", 0];
+  if (t >= land) return [FLAP_TXT[j], 0];
+  const step = Math.floor((t - t0) / .045);
+  const ph = ((t - t0) % .045) / .045;
+  return [FLAP_GLYPHS[Math.floor(hash(j * 31 + step) * FLAP_GLYPHS.length)], ph];
+}
+function sFlap(g, t) {
+  bg(g, C.bg);
+  const u = t - bt(24);
+  // vista lateral arriba
+  const m = META.side, sp = spring(u, 11, .45), w = 860, s = w / m.w;
+  const x = CX + (1 - sp) * -900, y = 520, ang = -.1 + (1 - sp) * -.3;
+  g.save(); g.translate(x, y); g.rotate(ang); g.scale(s, s); g.drawImage(IMG.side, -m.w / 2, -m.h / 2); g.restore();
+  const lx = m.w * .94 - m.w / 2, ly = m.h * .86 - m.h / 2;
+  const ax = x + (lx * Math.cos(ang) - ly * Math.sin(ang)) * s, ay = y + (lx * Math.sin(ang) + ly * Math.cos(ang)) * s;
+  // tablero
+  const cells = FLAP_TXT.length, cwid = 132, ch = 200, gap = 10, x0 = CX - (cells * cwid + (cells - 1) * gap) / 2, y0 = 1000;
+  for (let j = 0; j < cells; j++) {
+    const [c, ph] = flapChar(j, t);
+    const cx = x0 + j * (cwid + gap);
+    g.fillStyle = C.ink; g.beginPath(); g.roundRect(cx, y0, cwid, ch, 12); g.fill();
+    g.save(); g.beginPath(); g.roundRect(cx, y0, cwid, ch, 12); g.clip();
+    g.fillStyle = C.bg; g.font = "150px IDBlack"; g.textAlign = "center";
+    g.fillText(c, cx + cwid / 2, y0 + ch / 2 + 54);
+    // la solapa superior cayendo
+    if (ph > 0) {
+      g.fillStyle = `rgba(0,0,0,${.35 * (1 - ph)})`;
+      g.fillRect(cx, y0 + ch / 2 * ph, cwid, ch / 2 * (1 - ph));
+    }
+    g.restore();
+    g.fillStyle = "rgba(0,0,0,.45)"; g.fillRect(cx, y0 + ch / 2 - 2, cwid, 4);
+  }
+  // tablero completo: golpe y llamada a la patilla
+  const ld = since("flap_land", t);
+  if (ld !== Infinity) {
+    const a = E.outExpo(clamp(ld / .4));
+    g.strokeStyle = C.coral; g.lineWidth = 4;
+    g.beginPath(); g.arc(ax, ay, 44 * a, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(ax, ay + 44); g.lineTo(ax, lerp(ay + 44, y0 - 30, a)); g.stroke();
+  }
+  const vl = evs("vline");
+  riseWord(g, "N° de serie en la patilla", CX, 1330, 60, "IDSemi", C.coral, vl[0] ? vl[0].t : bt(25), t);
+  riseWord(g, "21–24 piezas por color.", CX, 1460, 84, "IDBlack", C.ink, vl[1] ? vl[1].t : bt(26), t);
+  riseWord(g, "Hecho en Argentina · 100% acetato argentino", CX, 1560, 42, "IDMedium", C.gray, vl[2] ? vl[2].t : bt(27), t);
+}
+
+// 6 · macro del acetato en tiras · tuyo y de nadie más (14 → 16 s)
+function macroFace(name, t, i, gray) {
+  return (g, y0, dx) => {
+    const m = META[name], im = IMG[(gray ? "fullgray_" : "full_") + name];
+    // recorte macro: esquina superior externa del frente (el ala cat-eye y la bisagra)
+    const z = 2.7, sx = m.w * .02 + (t - bt(28)) * 40 * (i % 2 ? 1 : -1), sy = m.h * .02;
+    g.fillStyle = gray ? "#D9D6D2" : rgba(BLOCK[name], .35); g.fillRect(0, y0, W, SH);
+    g.save(); g.beginPath(); g.rect(0, y0, W, SH); g.clip();
+    g.drawImage(im, sx, sy, W / z, SH / z, dx, y0, W, SH);
+    g.restore();
+  };
+}
+function sMacro(g, t) {
+  bg(g, C.bg);
+  const ch = since("choose", t);
+  const keep = 2;
+  for (let i = 0; i < NS; i++) {
+    const name = NAMES[i];
+    const ent = spring(t - bt(28) - i * .04, 18, .45);
+    const dx = (1 - ent) * (i % 2 ? W : -W);
+    if (ch === Infinity || i === keep) { drawSlice(g, i, 1, dx, macroFace(name, t, i, false)); continue; }
+    const q = prog(ch, -.06, .16), c = Math.cos(q * Math.PI);
+    drawSlice(g, i, Math.abs(c), dx, macroFace(name, t, i, c < 0));
+  }
+  // la tira elegida se ilumina con su color pleno
+  if (ch !== Infinity) {
+    const a = E.outCubic(clamp(ch / .3));
+    g.strokeStyle = rgba(C.coral, a); g.lineWidth = 8; g.strokeRect(4, keep * SH + 4, W - 8, SH - 8);
+  }
+  separators(g, 1e9, .9);
+  // texto en tarjeta
+  const yl = evs("yline");
+  if (t >= yl[0].t) {
+    const a = E.outCubic(prog(t, yl[0].t, yl[0].t + .2));
+    g.save(); g.globalAlpha = a; g.fillStyle = "rgba(250,245,242,.95)";
+    g.beginPath(); g.roundRect(70, 1460, W - 140, 300, 30); g.fill(); g.restore();
+  }
+  riseWord(g, "Un anteojo que es tuyo", CX, 1580, 82, "IDBlack", C.ink, yl[0].t, t);
+  riseWord(g, "y de nadie más.", CX, 1690, 82, "IDBlack", C.coral, yl[1].t, t);
+}
+
+// 7 · cierre: bajan las persianas de papel, logo y el local girando al color (16 → 20 s)
+const TP = {}; for (const k of TUPE.order) TP[k] = tupePath(k);
+const FROM = { bar: [-160, 0], tStem: [0, -120], u: [0, 120], pStem: [0, -120], pBowl: [140, 0], eDome: [0, 110], eStem: [-90, 0], accent: [0, -150] };
+function drawTupeT(g, x, y, s, times, t) {
+  g.save(); g.translate(x, y); g.scale(s, s * 1.025);
+  TUPE.order.forEach((k, i) => {
+    const tp = times[i]; if (t < tp - .1) return;
+    const q = E.inCubic(prog(t, tp - .1, tp)), [fx, fy] = FROM[k];
+    const d = t >= tp ? Math.exp(-(t - tp) * 11) * Math.cos((t - tp) * 30) : 0;
+    g.save(); g.translate(fx * (1 - q), fy * (1 - q)); g.scale(1 + .1 * d, 1 - .14 * d);
+    g.fillStyle = k === "accent" ? C.tang : C.ink; g.fill(TP[k]); g.restore();
+  });
+  if (t >= times[7]) { g.globalAlpha = clamp((t - times[7]) / .2); drawCopyright(g, 123.5, 3.2, 4.2, .85, C.ink); }
+  g.restore();
+}
+function sEnd(g, t) {
+  const slats = evs("slat");
+  const closed = t >= slats[NS - 1].t + .02;
+  if (!closed) sMacro(g, t);
+  for (let i = 0; i < NS; i++) {
+    const e = slats[i]; if (t < e.t - .14) continue;
+    const q = E.outCubic(prog(t, e.t - .14, e.t + .02)), c = Math.sin(q * Math.PI / 2);
+    drawSlice(g, i, c, 0, (gg, y0) => { gg.fillStyle = C.bg; gg.fillRect(0, y0, W, SH); });
+  }
+  if (!closed) return;
+  const s = 6.2, lx = CX - 63.5 * s, ly = 640 - 9.5 * s;
+  drawTupeT(g, lx, ly, s, evs("piece").map(e => e.t), t);
+  const c = evs("cta");
+  g.save(); g.textAlign = "center"; g.fillStyle = C.gray;
+  const a1 = E.outCubic(prog(t, c[0].t, c[0].t + .3));
+  g.globalAlpha = a1; g.font = "62px IDLight"; g.fillText("encontrá", CX + 6, 470 + (1 - a1) * 26);
+  g.globalAlpha = 1; g.font = "58px IDLight";
+  const url = "en carladisi.com/tupe", n = Math.floor(clamp((t - c[0].t) / .35) * url.length);
+  g.fillText(url.slice(0, n), CX, 850);
+  const ul = E.inOutCubic(prog(t, c[0].t + .35, c[0].t + .7));
+  if (ul > 0) { const w = g.measureText(url).width; g.fillStyle = C.coral; g.fillRect(CX - w / 2, 872, w * ul, 4); }
+  g.restore();
+  // el local en 5 tiras: entra gris y cada tira gira al color en su golpe
+  if (t >= c[1].t) {
+    const im = IMG.local, cwid = 880, chh = 450, x = CX - cwid / 2, y = 975 + (1 - spring(t - c[1].t, 14, .5)) * 260;
+    const sr = Math.max(cwid / im.width, chh / im.height), dw = im.width * sr, dh = im.height * sr;
+    const hs = chh / NS, pf = evs("pflip");
+    g.save(); g.globalAlpha = clamp((t - c[1].t) / .15);
+    g.beginPath(); g.roundRect(x, y, cwid, chh, 26); g.clip();
+    for (let i = 0; i < NS; i++) {
+      const e = pf[i], q = e ? E.inOutCubic(prog(t, e.t - .12, e.t + .02)) : 0, cc = Math.cos(q * Math.PI);
+      const yy = y + i * hs, yc = yy + hs / 2;
+      g.save(); g.beginPath(); g.rect(x, yy, cwid, hs); g.clip();
+      g.translate(0, yc); g.scale(1, Math.max(Math.abs(cc), .002)); g.translate(0, -yc);
+      g.drawImage(cc >= 0 ? IMG.localGray : im, x + (cwid - dw) / 2, y + (chh - dh) / 2, dw, dh);
+      if (Math.abs(cc) < 1) { g.fillStyle = `rgba(20,14,16,${(1 - Math.abs(cc)) * .5})`; g.fillRect(x, yy, cwid, hs); }
+      g.restore();
+    }
+    g.restore();
+    g.save(); g.globalAlpha = clamp((t - c[1].t - .1) / .3); g.fillStyle = C.ink; g.font = "42px IDMedium"; g.textAlign = "center"; g.letterSpacing = "2px";
+    g.fillText("Probalos en Palermo Soho", CX, 1505); g.restore();
+  }
+  const sg = evs("sign")[0];
+  drawSignature(g, CX - SIGN.w * 3 / 2, 1600 - 13 * 3, 3, E.inOutCubic(prog(t, sg.t, sg.t + 1.2)), C.coral);
+  const d = since("sparkle", t);
+  if (d < .8) {
+    const cols = [C.tang, "#B5E000", C.coral, "#7A3AA0"];
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2 + .3, r = 40 + E.outExpo(clamp(d / .5)) * 150, sz = 22 * Math.max(0, 1 - d / .7);
+      if (sz > 0) sparkleStar(g, lx + 103.5 * s + Math.cos(a) * r, ly - 6 * s + Math.sin(a) * r, sz, cols[i % 4], d * 4);
+    }
+  }
+}
+
+// ============================================================================
+//  LÍNEA DE TIEMPO
+// ============================================================================
+function drawScene(g, t) {
+  g.save();
+  const imp = [[20, 1], [33.25, .4]].reduce((a, [b, amt]) => a + (t >= bt(b) ? Math.exp(-(t - bt(b)) * 9) * amt : 0), 0);
+  if (imp > .01) g.translate(Math.sin(t * 93) * 14 * imp, Math.cos(t * 71) * 14 * imp);
+  const b = t / BEAT;
+  if (b < 19.5) sBlinds(g, t);
+  else if (b < 20) sCollapse(g, t);
+  else if (b < 24) sBlocks(g, t);
+  else if (b < 28) sFlap(g, t);
+  else if (b < 32 - .3) sMacro(g, t);
+  else sEnd(g, t);
+  g.restore();
+}
+
+// ============================================================================
+//  RENDER: motion blur real que nunca cruza un corte
+// ============================================================================
+let CUTS = [];
+function subframesAt(t) {
+  const b = t / BEAT;
+  for (const k of ["word", "textswap", "glitch", "shift", "align", "shuffle", "slat", "pflip"]) for (const e of evs(k)) if (t >= e.t - .2 && t < e.t + .2) return 12;
+  for (const e of evs("flip")) if (t >= e.t - .22 && t < e.t + .06) return 14;
+  // cinta transportadora: 1500 px en ~0,24 s alrededor de cada golpe
+  for (let k = 12; k < 16; k++) if (t >= bt(k) - .2 && t < bt(k) + .02) return 36;
+  if (b >= 19.3 && b < 20) return 14;
+  return 6;
+}
+const SHUTTER = .5;
+let grain = [];
+function initGrain() {
+  let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 6; k++) {
+    const c = mk(256, 256), g = c.getContext("2d"), im = g.createImageData(256, 256);
+    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (rnd() + rnd() - 1) * 110; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    g.putImageData(im, 0, 0); grain.push(ctx.createPattern(c, "repeat"));
+  }
+}
+function renderFrame(f, opts = {}) {
+  const t0 = f / FPS, sf = opts.subframes || subframesAt(t0);
+  for (let i = 0; i < sf; i++) {
+    let t = clamp(t0 + (sf === 1 ? 0 : (i / (sf - 1) - .5) * SHUTTER / FPS), 0, DUR - 1e-4);
+    for (const c of CUTS) { if (t0 >= c && t < c) t = c; if (t0 < c && t >= c) t = c - 1e-4; }
+    sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.globalAlpha = 1; sctx.globalCompositeOperation = "source-over";
+    drawScene(sctx, t);
+    actx.globalCompositeOperation = i === 0 ? "copy" : "source-over"; actx.globalAlpha = 1 / (i + 1);
+    actx.drawImage(sub, 0, 0);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "copy"; ctx.drawImage(acc, 0, 0);
+  ctx.globalCompositeOperation = "soft-light"; ctx.globalAlpha = .09; ctx.fillStyle = grain[f % grain.length];
+  const ox = Math.floor(hash(f) * 256), oy = Math.floor(hash(f + 3) * 256);
+  ctx.translate(ox, oy); ctx.fillRect(-ox, -oy, W, H);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+}
+async function init(score) {
+  for (const e of score.events) (byKind[e.kind] = byKind[e.kind] || []).push(e);
+  META = score.meta;
+  // cortes duros: cada corte de color-blocking, el split-flap y el macro
+  CUTS = [...evs("cut").map(e => e.t), bt(24), bt(28)];
+  const jobs = [];
+  for (const n of NAMES) for (const p of ["full", "fullgray"]) jobs.push(loadImg(`assets/${p}_${n}.png`).then(i => IMG[`${p}_${n}`] = i));
+  jobs.push(loadImg("assets/side_fluo.png").then(i => IMG.side = i));
+  jobs.push(loadImg("assets/local.jpg").then(i => IMG.local = i));
+  jobs.push(loadImg("assets/local_gray.jpg").then(i => IMG.localGray = i));
+  await Promise.all(jobs);
+  await Promise.all(["IDBlack", "IDLight", "IDMedium", "IDSemi"].map(f => document.fonts.load(`100px ${f}`)));
+  initGrain();
+  window.READY = true;
+}
+window.init = init; window.renderFrame = renderFrame;
+</script>
+</body>
+</html>
