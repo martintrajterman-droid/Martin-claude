@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Carpeta M3 · TUPÉ · Martin Trajterman</title>
+<style>
+  @font-face { font-family: "IDBlack"; src: local("Inter Display Black"), local("InterDisplay-Black"); }
+  @font-face { font-family: "IDBold"; src: local("Inter Display Bold"), local("InterDisplay-Bold"); }
+  @font-face { font-family: "IDSemi"; src: local("Inter Display SemiBold"), local("InterDisplay-SemiBold"); }
+  @font-face { font-family: "IDMedium"; src: local("Inter Display Medium"), local("InterDisplay-Medium"); }
+  @font-face { font-family: "IDReg"; src: local("Inter Display"), local("InterDisplay-Regular"); }
+  @font-face { font-family: "IDLight"; src: local("Inter Display Light"), local("InterDisplay-Light"); }
+  @page { size: A4; margin: 0; }
+  :root { --bg:#FAF5F2; --ink:#2B2427; --coral:#E54F4E; --tang:#F8B414; --fluo:#CFF21E; --gray:#6F6866; --g1:#E4E1DD; --g2:#BDB8B3; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:#888; }
+  body { font-family:"IDReg", sans-serif; color:var(--ink); -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .page { width:210mm; height:297mm; background:var(--bg); position:relative; overflow:hidden; page-break-after:always; break-after:page; padding:20mm 18mm 22mm 18mm; }
+  .page.gray { background:#E9E7E4; }
+  .page.ink { background:var(--ink); color:var(--bg); }
+  .folio { position:absolute; bottom:9mm; left:18mm; right:18mm; display:flex; justify-content:space-between; font:7.5pt "IDMedium"; letter-spacing:.08em; text-transform:uppercase; color:var(--gray); }
+  .ink .folio { color:#A9A2A0; }
+  h1 { font:38pt/1 "IDBlack"; margin:0 0 6mm; letter-spacing:-.01em; text-transform:uppercase; }
+  h2 { font:22pt/1.05 "IDBlack"; margin:0 0 5mm; text-transform:uppercase; }
+  h3 { font:12.5pt/1.2 "IDBold"; margin:6mm 0 2.5mm; }
+  h4 { font:10pt/1.2 "IDBold"; margin:4mm 0 1.5mm; }
+  p, li { font:9.6pt/1.5 "IDReg"; margin:0 0 2.6mm; }
+  ul, ol { margin:0 0 3mm; padding-left:5mm; }
+  li { margin-bottom:1.4mm; }
+  b, strong { font-family:"IDBold"; font-weight:normal; }
+  em { font-family:"IDMedium"; font-style:italic; }
+  .kicker { font:8pt "IDSemi"; letter-spacing:.16em; text-transform:uppercase; color:var(--coral); margin-bottom:3mm; }
+  .lead { font:12pt/1.45 "IDLight"; margin-bottom:5mm; }
+  .hl { background:var(--fluo); padding:0 1.2mm; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
+  table { width:100%; border-collapse:collapse; margin:2mm 0 4mm; }
+  th, td { font:8.3pt/1.38 "IDReg"; text-align:left; vertical-align:top; padding:2mm 2.2mm; border-bottom:.3mm solid #D9D3CE; }
+  th { font-family:"IDBold"; background:var(--ink); color:var(--bg); text-transform:uppercase; font-size:7.3pt; letter-spacing:.06em; }
+  td b { font-family:"IDBold"; }
+  .quote { border-left:1.2mm solid var(--coral); padding:1mm 0 1mm 4mm; margin:3mm 0 4mm; font:10pt/1.5 "IDLight"; }
+  .box { background:#fff; border-radius:3mm; padding:5mm; margin:3mm 0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6mm; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4mm; }
+  .tag { display:inline-block; font:7.5pt "IDSemi"; letter-spacing:.08em; text-transform:uppercase; padding:1mm 2.4mm; border-radius:10mm; background:var(--ink); color:var(--bg); margin-right:1.5mm; }
+  .tag.a { background:var(--tang); color:var(--ink); }
+  .tag.b { background:var(--coral); color:#fff; }
+  .strip { display:flex; gap:1.6mm; margin:2mm 0 1mm; }
+  .strip img { width:calc((100% - 8mm)/6); aspect-ratio:9/16; object-fit:cover; border-radius:1.2mm; display:block; }
+  .strip.four img { width:calc((100% - 4.8mm)/4); }
+  .vid { margin-bottom:6mm; }
+  .vid .meta { display:flex; justify-content:space-between; align-items:baseline; }
+  .vid .meta h3 { margin:0 0 1mm; }
+  .vid .file { font:7.5pt "IDMedium"; color:var(--gray); }
+  .small { font-size:8pt; color:var(--gray); }
+  .opener { display:flex; flex-direction:column; justify-content:flex-end; }
+  .opener .num { font:120pt/0.85 "IDBlack"; margin-bottom:4mm; }
+  .opener h1 { font-size:46pt; }
+  canvas.logo { display:block; }
+  .check li { list-style:none; position:relative; padding-left:6mm; }
+  .check li::before { content:""; position:absolute; left:0; top:1.2mm; width:3mm; height:3mm; border:.35mm solid var(--ink); border-radius:.6mm; }
+  /* mockups */
+  .slide { aspect-ratio:4/5; border-radius:2mm; overflow:hidden; position:relative; background:var(--bg); box-shadow:0 .6mm 2mm rgba(0,0,0,.18); }
+  .slide .t { position:absolute; left:6%; right:6%; font-family:"IDBlack"; text-transform:uppercase; line-height:1; }
+  .slide img { position:absolute; }
+  .phone { width:62mm; aspect-ratio:9/19; border-radius:7mm; background:#111; padding:2.2mm; box-shadow:0 1mm 3mm rgba(0,0,0,.25); }
+  .phone .scr { width:100%; height:100%; border-radius:5mm; overflow:hidden; position:relative; }
+  .wa { background:#E8DFD6; font-family:"IDReg"; }
+  .wa .bar { background:#1F7A5A; color:#fff; font:7pt "IDSemi"; padding:3mm 3mm 2.4mm; display:flex; align-items:center; gap:2mm; }
+  .wa .bar i { width:5mm; height:5mm; border-radius:50%; background:var(--bg); display:inline-block; }
+  .bub { background:#fff; border-radius:2mm; padding:1.8mm 2.2mm; margin:2mm 2.5mm; font:6.6pt/1.4 "IDReg"; max-width:80%; box-shadow:0 .2mm .4mm rgba(0,0,0,.1); }
+  .bub.me { background:#D9FDD3; margin-left:auto; }
+  .mail { width:72mm; background:#fff; border-radius:2mm; overflow:hidden; box-shadow:0 .6mm 2mm rgba(0,0,0,.18); font-size:6.8pt; }
+  .mail .hd { background:var(--bg); padding:4mm; text-align:center; }
+  .mail .bd { padding:4mm; }
+  .mail .bd p { font:6.8pt/1.45 "IDReg"; }
+  .btn { display:inline-block; background:var(--ink); color:var(--bg); font:7pt "IDBold"; padding:2mm 4mm; border-radius:10mm; }
+</style>
+</head>
+<body>
+
+<!-- ============ CARÁTULA INSTITUCIONAL ============ -->
+<section class="page" style="background:#fff; padding:24mm 22mm;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div style="background:#000; color:#fff; width:30mm; height:30mm; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+      <div style="font:30pt/0.9 'IDBlack';">UP</div><div style="font:6pt/1.2 'IDSemi'; text-align:center; margin-top:1mm;">Universidad<br>de Palermo</div>
+    </div>
+    <div style="text-align:right; font:9pt/1.4 'IDSemi';">Facultad de Diseño<br>y Comunicación</div>
+  </div>
+  <div style="margin-top:42mm;">
+    <div class="kicker" style="color:#000;">Proyecto Integrador · Momento 3 (100%)</div>
+    <div style="font:26pt/1.08 'IDBlack'; text-transform:uppercase;">Campaña de marketing directo y promocional online</div>
+    <div style="font:15pt/1.3 'IDLight'; margin-top:4mm;">TUPÉ · Mirá el verano con otro color</div>
+  </div>
+  <table style="margin-top:28mm; width:75%;">
+    <tr><td style="width:38%; font-family:IDBold; border-color:#ccc;">Estudiante</td><td style="border-color:#ccc;">Martin Trajterman</td></tr>
+    <tr><td style="font-family:IDBold; border-color:#ccc;">Carrera</td><td style="border-color:#ccc;">Dirección Creativa Publicitaria</td></tr>
+    <tr><td style="font-family:IDBold; border-color:#ccc;">Legajo</td><td style="border-color:#ccc;">0151636</td></tr>
+    <tr><td style="font-family:IDBold; border-color:#ccc;">Asignatura</td><td style="border-color:#ccc;">Publicidad IV (020465) · Estrategias</td></tr>
+    <tr><td style="font-family:IDBold; border-color:#ccc;">Profesora</td><td style="border-color:#ccc;">Romina De Marcos</td></tr>
+    <tr><td style="font-family:IDBold; border-color:#ccc;">Año y cuatrimestre</td><td style="border-color:#ccc;">2026 · 2.º cuatrimestre</td></tr>
+  </table>
+</section>
+
+<!-- ============ CARÁTULA DE AUTOR ============ -->
+<section class="page" style="padding:0; background:#1b1b1b;">
+  <img src="img/frames/tupe2_1.5.jpg" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:grayscale(1) contrast(.95);">
+  <div style="position:absolute; left:0; right:0; top:118mm; height:64mm; overflow:hidden;">
+    <img src="img/frames/tupe2_11.jpg" style="position:absolute; left:0; top:-118mm; width:210mm; height:297mm; object-fit:cover;">
+  </div>
+  <img src="assets/full_fluo.png" style="position:absolute; left:12mm; width:186mm; top:118mm;">
+  <div style="position:absolute; left:16mm; right:16mm; top:24mm;">
+    <div style="font:40pt/0.98 'IDBlack'; color:var(--ink); text-transform:uppercase;">Mirá el verano<br>con otro <span class="hl">color.</span></div>
+  </div>
+  <div style="position:absolute; left:16mm; right:16mm; bottom:18mm; display:flex; justify-content:space-between; align-items:flex-end; color:var(--ink);">
+    <div style="font:9pt/1.4 'IDSemi'; background:rgba(250,245,242,.92); padding:3mm 4mm; border-radius:2mm;">Martin Trajterman<br>Publicidad IV · 2026</div>
+    <div style="background:rgba(250,245,242,.92); padding:3mm 4mm; border-radius:2mm;"><canvas class="logo" data-w="46" data-col="#2B2427"></canvas></div>
+  </div>
+</section>
+
+<!-- ============ ÍNDICE ============ -->
+<section class="page">
+  <div class="kicker">Índice</div>
+  <h1>Contenidos</h1>
+  <table style="margin-top:10mm;">
+    <tr><td style="font:13pt IDBold;">01 · Descripción del Proyecto Integrador</td><td style="text-align:right; font:13pt IDBold;">4</td></tr>
+    <tr><td style="font:13pt IDBold;">02 · Proceso y evidencias de aprendizaje</td><td style="text-align:right; font:13pt IDBold;">6</td></tr>
+    <tr><td style="padding-left:8mm;">Etapa 1 · Selección y exploración de marca y producto</td><td style="text-align:right;">7</td></tr>
+    <tr><td style="padding-left:8mm;">Etapa 2 · Creación del brief</td><td style="text-align:right;">8</td></tr>
+    <tr><td style="padding-left:8mm;">Etapa 3 · Planificación de la campaña</td><td style="text-align:right;">9</td></tr>
+    <tr><td style="padding-left:8mm;">Etapa 4 · Evaluación del engagement</td><td style="text-align:right;">11</td></tr>
+    <tr><td style="font:13pt IDBold;">03 · Proyecto Integrador finalizado</td><td style="text-align:right; font:13pt IDBold;">12</td></tr>
+    <tr><td style="padding-left:8mm;">Insights e idea creativa</td><td style="text-align:right;">13</td></tr>
+    <tr><td style="padding-left:8mm;">Brief creativo</td><td style="text-align:right;">14</td></tr>
+    <tr><td style="padding-left:8mm;">Estrategia promocional: preventa “Tu número”</td><td style="text-align:right;">15</td></tr>
+    <tr><td style="padding-left:8mm;">Piezas por red social y categoría</td><td style="text-align:right;">16</td></tr>
+    <tr><td style="padding-left:8mm;">Marketing directo</td><td style="text-align:right;">21</td></tr>
+    <tr><td style="padding-left:8mm;">Evaluación del engagement</td><td style="text-align:right;">22</td></tr>
+    <tr><td style="font:13pt IDBold;">04 · Reflexión sobre el proceso de aprendizaje</td><td style="text-align:right; font:13pt IDBold;">23</td></tr>
+    <tr><td style="font:13pt IDBold;">05 · Bibliografía</td><td style="text-align:right; font:13pt IDBold;">24</td></tr>
+    <tr><td style="font:13pt IDBold;">Anexo · Diagnóstico de marca (Momento 2)</td><td style="text-align:right; font:13pt IDBold;">25</td></tr>
+  </table>
+  <p class="small" style="margin-top:6mm;">El kit de redes sociales se entrega en una carpeta aparte.</p>
+  <div class="folio"><span>TUPÉ · Mirá el verano con otro color</span><span>3</span></div>
+</section>
+
+<!-- ============ 01 DESCRIPCIÓN ============ -->
+<section class="page">
+  <div class="kicker">01 · Descripción del Proyecto Integrador</div>
+  <h1>Qué es este proyecto</h1>
+  <p class="lead">Una campaña de marketing directo y promocional online para TUPÉ, la línea de anteojos numerados de Carla Di Sí, que convierte su mayor diferencial, la escasez numerada, en un motivo de compra.</p>
+  <div class="quote"><b>Consigna (Guía del PI):</b> “Se trata de la creación de una campaña de marketing directo y promocional para medios digitales. El PI aborda la selección y exploración de un producto de una marca específica, el análisis del proceso de comunicación publicitaria, la confección del brief y la elaboración de una propuesta de marketing directo y promocional online.”</div>
+  <h3>Marca y producto</h3>
+  <p>TUPÉ es la línea de anteojos de Carla Di Sí, marca argentina de anteojos de autor con óptica propia en Palermo Soho. Se organiza en modelos de “laboratorio” (lab001, lab002, lab003), cada uno en versión de sol y de vista, con una tirada de alrededor de 22 piezas por color y número de serie en la patilla.</p>
+  <h3>Objetivo del trabajo</h3>
+  <p>Darle a TUPÉ un universo de comunicación propio. Hoy se presenta como marca, pero se comunica como un producto más del catálogo, y su diferencial aparece solo en la ficha técnica.</p>
+  <h3>Alcance</h3>
+  <p>Campaña de temporada primavera-verano 2026-2027 en Instagram, TikTok y Facebook, con marketing directo por WhatsApp y mail sobre la base de clientes de la marca, y una acción promocional de preventa.</p>
+  <h3>Resultado esperado</h3>
+  <ul>
+    <li>El concepto <em>Mirá el verano con otro color</em>.</li>
+    <li>Seis piezas audiovisuales verticales y las piezas estáticas por red, en dos categorías.</li>
+    <li>La acción promocional “Tu número”.</li>
+    <li>Los indicadores para medir el engagement de la campaña.</li>
+  </ul>
+  <div class="folio"><span>TUPÉ · Mirá el verano con otro color</span><span>4</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">01 · Descripción del Proyecto Integrador</div>
+  <h2>La campaña en una página</h2>
+  <div class="grid2" style="margin-top:6mm;">
+    <div class="box"><div class="kicker">Problema</div><p style="font:13pt/1.3 IDBold;">TUPÉ se lanzó como marca, pero se comunica como colección.</p><p>Su diferencial, la escasez numerada, vive en la ficha técnica y no en una historia.</p></div>
+    <div class="box"><div class="kicker">Insight</div><p style="font:13pt/1.3 IDBold;">“El anteojo es lo primero que el otro ve de mi cara.”</p><p>Y lo que más molesta es cruzarse a alguien con el mismo.</p></div>
+    <div class="box"><div class="kicker">Idea creativa</div><p style="font:13pt/1.3 IDBold;">Mirá el verano con otro color.</p><p>El mundo está en gris y un TUPÉ lo devuelve en color. Remate: “¡Qué tupé!”.</p></div>
+    <div class="box"><div class="kicker">Acción promocional</div><p style="font:13pt/1.3 IDBold;">Preventa “Tu número”.</p><p>Del 1 al 21 de diciembre, quien reserva elige el número de serie de su TUPÉ.</p></div>
+  </div>
+  <div class="strip" style="margin-top:8mm;">
+    <img src="img/frames/tupe2_1.5.jpg"><img src="img/frames/tupe2_4.5.jpg"><img src="img/frames/tupe2_8.jpg"><img src="img/frames/tupe2_11.jpg"><img src="img/frames/tupe2_15.jpg"><img src="img/frames/tupe2_19.jpg">
+  </div>
+  <p class="small">Pieza principal “Playa”, 20 s: del verano en gris al cierre de marca.</p>
+  <div class="folio"><span>TUPÉ · Mirá el verano con otro color</span><span>5</span></div>
+</section>
+
+<!-- ============ 02 PROCESO ============ -->
+<section class="page gray opener">
+  <div class="num">02</div>
+  <h1>Proceso y evidencias de aprendizaje</h1>
+  <p class="lead" style="max-width:150mm;">Del diagnóstico de la marca a un concepto, de ese concepto a seis piezas y, por último, a una acción promocional medible.</p>
+  <div class="folio"><span>TUPÉ · Mirá el verano con otro color</span><span>6</span></div>
+</section>
+
+<section class="page gray">
+  <div class="kicker">02 · Etapa 1</div>
+  <h2>Selección y exploración de marca y producto</h2>
+  <p>Elegí TUPÉ porque tiene un diferencial fuerte que la marca no comunica. Analicé el sitio de Carla Di Sí, su Instagram (más de 90 mil seguidores), entrevistas a Carla y notas de prensa sobre anteojos de autor. Relevé el macro y microentorno, la competencia y los hábitos de compra, y lo cerré en un FODA. El diagnóstico completo está en el anexo.</p>
+  <table>
+    <tr><th style="width:26%;">Fortalezas</th><th style="width:24%;">Debilidades</th><th style="width:25%;">Oportunidades</th><th>Amenazas</th></tr>
+    <tr><td>Más de 20 años de trayectoria, óptica propia, fabricación nacional, exclusividad comprobable por la numeración, comunidad digital consolidada.</td><td>TUPÉ sin identidad diferenciada, nombres “lab00X” poco atractivos, precio elevado, stock limitado.</td><td>El anteojo como accesorio de moda, interés por lo coleccionable, valor de lo hecho en Argentina, tiendas internacionales.</td><td>Importados más baratos, colecciones de celebridades, inflación y retracción del consumo premium.</td></tr>
+  </table>
+  <h3>Ecosistema de comunicación actual</h3>
+  <table>
+    <tr><th style="width:18%;">Canal</th><th>Qué pasa hoy con TUPÉ</th></tr>
+    <tr><td><b>Web</b></td><td>Una categoría más del menú, al mismo nivel que Dandy, Accesorios o Gift Card.</td></tr>
+    <tr><td><b>Instagram</b></td><td>Sin cuenta propia: aparece en publicaciones aisladas de @carladisi.</td></tr>
+    <tr><td><b>Local</b></td><td>Palermo Soho: prueba, espejo y asesoramiento óptico.</td></tr>
+    <tr><td><b>Directo</b></td><td>Newsletter, WhatsApp y turnos de la óptica: una base valiosa, sin acciones para TUPÉ.</td></tr>
+  </table>
+  <div class="box" style="margin-top:5mm;"><div class="kicker">Hallazgo central</div><p style="font:12pt/1.35 IDBold; margin:0;">TUPÉ se lanzó como marca pero se comunica como colección, y la escasez numerada vive solo en la ficha técnica.</p></div>
+  <div class="folio"><span>Proceso · Etapa 1</span><span>7</span></div>
+</section>
+
+<section class="page gray">
+  <div class="kicker">02 · Etapa 2</div>
+  <h2>Creación del brief</h2>
+  <p>Con el diagnóstico armé el brief: problema, objetivo, buyer persona, audiencias, riesgos de compra, posicionamiento y promesa. El paso siguiente fue la nueva estrategia: darle a TUPÉ un universo propio a partir de una idea, no de un dato.</p>
+  <div class="grid2">
+    <div>
+      <h3>Buyer persona</h3>
+      <p><b>Julieta, 35 años.</b> Directora de arte en una agencia, vive en Villa Crespo y usa anteojos desde chica. Para ella, el anteojo es la primera parte de su cara que ve el otro: no quiere el mismo modelo que todos. Su miedo es pagar mucho por algo que no le quede bien o que no se note como especial.</p>
+      <h3>Audiencias</h3>
+      <ul>
+        <li><b>Primaria:</b> clientas y clientes actuales de Carla Di Sí que buscan una pieza más exclusiva.</li>
+        <li><b>Secundaria:</b> interesados en moda y diseño que siguen la marca pero no compraron.</li>
+        <li><b>Influencia:</b> ópticos y vendedores del local, referentes de moda porteños y el círculo del comprador.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Riesgos al comprar</h3>
+      <ul>
+        <li><b>Performance:</b> ¿me queda bien?, ¿el acetato justifica el precio?</li>
+        <li><b>Social:</b> ¿es demasiado? Sin logo visible, la exclusividad no se nota.</li>
+        <li><b>Autosatisfacción:</b> ¿vale lo que cuesta, con este contexto económico?</li>
+      </ul>
+      <h3>Posicionamiento y promesa</h3>
+      <p>Carla Di Sí es “la marca argentina de anteojos de autor”, pero TUPÉ se percibe como “un Carla más caro”. La promesa que la campaña tiene que instalar: <b>un anteojo único, que casi nadie más va a tener</b>.</p>
+    </div>
+  </div>
+  <h3>Cómo nació la idea</h3>
+  <p>La idea surgió del cruce entre la temporada (verano, el momento de más venta de anteojos de sol) y lo que hace especial al producto: el color del acetato y de los lentes. Así nació <em>Mirá el verano con otro color</em>, con “¡Qué tupé!” como remate.</p>
+  <div class="folio"><span>Proceso · Etapa 2</span><span>8</span></div>
+</section>
+
+<section class="page gray">
+  <div class="kicker">02 · Etapa 3</div>
+  <h2>Planificación de la campaña</h2>
+  <p>Definí el insight, las redes (las tres donde la marca ya tiene presencia, más WhatsApp y mail para el marketing directo) y la acción promocional “Tu número”. Antes de elegir la pieza principal exploré el concepto en seis versiones audiovisuales:</p>
+  <table>
+    <tr><th style="width:22%;">Versión</th><th style="width:38%;">Exploración</th><th>Qué aprendí</th></tr>
+    <tr><td><b>Spot original</b> · 15 s</td><td>Dos discos de color que se vuelven anteojos</td><td>La idea funciona, pero el anteojo dibujado no vende el producto real</td></tr>
+    <tr><td><b>Playa</b> · 20 s</td><td>El lente como ventana: solo a través de él se ve el color</td><td>Es la lectura más clara del concepto: quedó como pieza principal</td></tr>
+    <tr><td><b>Persianas</b> · 20 s</td><td>Cinco tiras, una por color, que giran del gris al color</td><td>Ordena la colección como sistema</td></tr>
+    <tr><td><b>Ciudad</b> · 20 s</td><td>Un edificio porteño que se enciende piso por piso</td><td>El verano también es la ciudad, donde vive la clienta</td></tr>
+    <tr><td><b>Revelado</b> · 20 s</td><td>Fotos instantáneas que pasan de gris a color</td><td>El número de serie como certificado: un objeto para guardar</td></tr>
+    <tr><td><b>Fábrica</b> · 20 s</td><td>El láser corta el acetato y el color asoma por el corte</td><td>Hace visible “hecho en Argentina” y la tirada corta</td></tr>
+  </table>
+  <h3>Primera exploración: el spot original</h3>
+  <div class="strip four"><img src="img/frames/tupe_1.5.jpg"><img src="img/frames/tupe_4.5.jpg"><img src="img/frames/tupe_8.jpg"><img src="img/frames/tupe_11.jpg"></div>
+  <p class="small">Del punto de color al anteojo y al logo armado pieza por pieza. Sirvió para validar el concepto y la paleta.</p>
+  <div class="folio"><span>Proceso · Etapa 3</span><span>9</span></div>
+</section>
+
+<section class="page gray">
+  <div class="kicker">02 · Etapa 3</div>
+  <h2>Decisiones que se repiten en todas las versiones</h2>
+  <p>Las versiones cambian de mundo, pero siguen el mismo arco narrativo. Esa repetición es la que las convierte en una campaña y no en videos sueltos.</p>
+  <ol>
+    <li><b>Gris:</b> un mundo apagado (playa, calle, mesa, taller).</li>
+    <li><b>El TUPÉ enciende el color:</b> “MIRÁ EL VERANO” → “CON OTRO COLOR.”, una palabra por golpe musical.</li>
+    <li><b>La colección:</b> los cinco colores pasan uno por uno, con su etiqueta.</li>
+    <li><b>Drop “¡QUÉ TUPÉ!”:</b> el mundo entero en color y los cinco juntos.</li>
+    <li><b>Valor y exclusividad:</b> número de serie, tirada, “Hecho en Argentina” y “Un anteojo que es tuyo y de nadie más”.</li>
+    <li><b>Cierre de marca:</b> encontrá TUPÉ© en carladisi.com/tupe, el local de Palermo Soho y la firma de Carla.</li>
+  </ol>
+  <h3>Lo que descarté y por qué</h3>
+  <ul>
+    <li><b>Mostrar el precio:</b> el FODA marca “precio alto sin relato”; primero hay que construir el valor.</li>
+    <li><b>Un descuento como promoción:</b> contradice la exclusividad de un producto escaso.</li>
+    <li><b>Especificaciones técnicas</b> (UV400, polarizado): no están confirmadas por la marca.</li>
+    <li><b>Personas en las piezas:</b> el verano se cuenta con objetos y lugares, para que el protagonista sea el anteojo.</li>
+  </ul>
+  <h3>Recursos de marca</h3>
+  <p>Logo TUPÉ© y firma de Carla redibujados en vectores, fotos reales de producto recortadas, paleta papel #FAF5F2 · tinta #2B2427 · coral #E54F4E · mandarina #F8B414 · flúo #CFF21E, y tipografía Inter Display. La música de cada pieza acompaña el concepto: empieza “en gris” (filtrada o lejana) y se abre cuando aparece el color.</p>
+  <div class="folio"><span>Proceso · Etapa 3</span><span>10</span></div>
+</section>
+
+<section class="page gray">
+  <div class="kicker">02 · Etapa 4</div>
+  <h2>Evaluación del engagement</h2>
+  <p>Asigné dos piezas por red, una por categoría, y definí los indicadores con los que se mide cada una: tasa de interacción, guardados, compartidos, clics a WhatsApp y reservas de la preventa.</p>
+  <p>Como la campaña no salió al aire, los valores son <b>proyecciones</b>: metas de referencia para una cuenta de moda de alrededor de 90 mil seguidores, que deberían ajustarse con los datos reales de @carladisi. El detalle está en la sección 03.</p>
+  <h3>Criterios de evaluación</h3>
+  <table>
+    <tr><th style="width:30%;">Etapa del embudo</th><th style="width:35%;">Qué se mide</th><th>Pieza que la trabaja</th></tr>
+    <tr><td><b>Atención</b></td><td>Alcance, reproducciones completas, retención a 10 s</td><td>Categoría A en Reels, TikTok y Facebook</td></tr>
+    <tr><td><b>Interés</b></td><td>Guardados, compartidos, comentarios</td><td>Categoría B: carrusel, video Fábrica</td></tr>
+    <tr><td><b>Deseo</b></td><td>Toques al enlace de WhatsApp, visitas a la landing</td><td>Story, post de preventa, mailing</td></tr>
+    <tr><td><b>Acción</b></td><td>Conversaciones “QUIERO MI NÚMERO”, reservas, colores agotados</td><td>WhatsApp y local</td></tr>
+  </table>
+  <div class="box"><p style="margin:0;"><b>Lectura esperada:</b> si la categoría A tiene buen alcance pero la B convierte poco, el problema está en explicar la preventa. Si ambas convierten, la escasez numerada funciona como argumento y puede repetirse en cada nuevo lab.</p></div>
+  <div class="folio"><span>Proceso · Etapa 4</span><span>11</span></div>
+</section>
+
+<!-- ============ 03 PI FINALIZADO ============ -->
+<section class="page opener ink" style="padding:0;">
+  <img src="assets/full_violeta.png" style="position:absolute; width:120mm; left:-14mm; top:22mm; transform:rotate(-8deg);">
+  <img src="assets/full_caramelo.png" style="position:absolute; width:112mm; left:100mm; top:30mm; transform:rotate(7deg);">
+  <img src="assets/full_fluo.png" style="position:absolute; width:126mm; left:42mm; top:72mm;">
+  <img src="assets/full_gris.png" style="position:absolute; width:108mm; left:-6mm; top:112mm; transform:rotate(5deg);">
+  <img src="assets/full_nude.png" style="position:absolute; width:112mm; left:104mm; top:116mm; transform:rotate(-6deg);">
+  <div style="position:relative; padding:0 18mm 26mm; color:var(--bg);">
+    <div class="num">03</div>
+    <h1>Proyecto Integrador finalizado</h1>
+  </div>
+  <div class="folio"><span>TUPÉ · Mirá el verano con otro color</span><span>12</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Insights e idea creativa</div>
+  <h2>Insights</h2>
+  <p>Un insight es una verdad del consumidor que la marca puede usar para conectar: algo que la persona siente pero no suele decir. De la investigación salen dos, uno para cada categoría de la campaña.</p>
+  <div class="grid2">
+    <div class="box"><span class="tag a">A · Deseo</span><p style="font:14pt/1.25 IDBold; margin:3mm 0;">“El anteojo es lo primero que el otro ve de mi cara.”</p><p>Para Julieta el anteojo no corrige: dice quién es. Elegirlo es elegir cómo la van a mirar y cómo va a mirar ella.</p></div>
+    <div class="box"><span class="tag b">B · Exclusividad</span><p style="font:14pt/1.25 IDBold; margin:3mm 0;">“Lo que más me molesta es cruzarme a alguien con lo mismo.”</p><p>Pagó por algo distinto; si lo ve en otra cara, pierde el sentido. TUPÉ lo resuelve con un dato verificable: número de serie y alrededor de 22 piezas por color.</p></div>
+  </div>
+  <h2 style="margin-top:8mm;">Idea creativa</h2>
+  <p style="font:20pt/1.1 IDBlack; text-transform:uppercase; margin:2mm 0 4mm;">Mirá el verano con otro <span class="hl">color.</span></p>
+  <p>El mundo está en gris y un TUPÉ lo devuelve en color: el anteojo no es un accesorio, es una forma de mirar. El remate <b>“¡Qué tupé!”</b> juega con el nombre de la línea y con la actitud que busca el brief: atreverse a ser distinto.</p>
+  <p><b>Cómo se vincula con el brief:</b> responde al problema central (TUPÉ sin universo propio) con una idea que solo esta línea puede decir, y convierte la escasez numerada en el cierre de cada pieza: “Un anteojo que es tuyo y de nadie más”.</p>
+  <div class="folio"><span>PI finalizado · Insights e idea</span><span>13</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Brief creativo</div>
+  <h2>Brief creativo</h2>
+  <table>
+    <tr><th style="width:28%;">Campo</th><th>Definición</th></tr>
+    <tr><td><b>Marca / producto</b></td><td>TUPÉ de Carla Di Sí: lab001 y lab002 de sol, cinco colores (violeta, caramelo, verde flúo, gris, nude)</td></tr>
+    <tr><td><b>Problema</b></td><td>Se comunica como un producto más; su diferencial vive en la ficha técnica</td></tr>
+    <tr><td><b>Objetivo de comunicación</b></td><td>Instalar a TUPÉ como línea propia de colección: “un anteojo que es tuyo y de nadie más”</td></tr>
+    <tr><td><b>Objetivos de performance</b></td><td>Agotar en preventa al menos 2 de los 5 colores · 300 conversaciones de WhatsApp · 4% de interacción promedio en Reels (proyectados)</td></tr>
+    <tr><td><b>Target</b></td><td>Julieta, 35, directora de arte, CABA · audiencias primaria, secundaria y de influencia</td></tr>
+    <tr><td><b>Concepto</b></td><td>Mirá el verano con otro color</td></tr>
+    <tr><td><b>Tono</b></td><td>Lúdico, atrevido y seguro; más cerca de Carla que del catálogo</td></tr>
+    <tr><td><b>Reason why</b></td><td>Número de serie en la patilla · alrededor de 22 piezas por color · diseño de autor · hecho en Argentina · estuche y paño</td></tr>
+    <tr><td><b>Mandatorios</b></td><td>Logo TUPÉ©, firma de Carla, carladisi.com/tupe, local de Palermo Soho</td></tr>
+    <tr><td><b>Tópicos omnicanal</b></td><td>Verano y color · coleccionar objetos · diseño argentino · “¿cuál es tu número?”</td></tr>
+    <tr><td><b>Acción promocional</b></td><td>Preventa “Tu número”</td></tr>
+  </table>
+  <div class="folio"><span>PI finalizado · Brief creativo</span><span>14</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Estrategia promocional</div>
+  <h2>Preventa “Tu número”</h2>
+  <p class="lead">Del 1 al 21 de diciembre de 2026, quien reserve su TUPÉ de sol <b>elige el número de serie</b> que va a llevar en la patilla, entre los disponibles de cada tirada.</p>
+  <div class="grid2">
+    <div>
+      <h3>Por qué valor agregado y no descuento</h3>
+      <p>Un descuento contradice la exclusividad y entrena al cliente a esperar ofertas. Un beneficio simbólico (elegir <em>tu</em> número: tu fecha, tu número de la suerte) refuerza el posicionamiento y le da al cliente una historia para contar, que es contenido orgánico para la marca.</p>
+      <h3>Beneficios</h3>
+      <ul>
+        <li>Elegir el número de serie (sujeto a disponibilidad).</li>
+        <li>Certificado de serie firmado por Carla, dentro del estuche.</li>
+        <li>Turno de prueba prioritario en Palermo Soho.</li>
+        <li>Cuotas sin interés y envío gratis, como ya ofrece la marca.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Recorrido del cliente</h3>
+      <ol>
+        <li>Ve una pieza de la categoría A en Reels o TikTok y se detiene por el color.</li>
+        <li>Una pieza de la categoría B le explica la tirada numerada y la preventa.</li>
+        <li>Escribe “QUIERO MI NÚMERO” por WhatsApp.</li>
+        <li>La marca le muestra los colores y los números que quedan, y le reserva el suyo.</li>
+        <li>Paga online o prueba primero en el local.</li>
+        <li>Recibe su TUPÉ con estuche, paño y certificado, y lo comparte con #MiNúmeroTUPÉ.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="box"><p><b>Bases (resumen):</b> válida del 1 al 21/12/2026 o hasta agotar la tirada. Los números se asignan por orden de reserva. No acumulable con otras promociones. Aplica a TUPÉ de sol en la tienda online y el local de Palermo Soho.</p><p style="margin:0;"><b>Integración ATL / BTL:</b> las piezas en redes generan alcance y deseo; el marketing directo convierte sobre la base de clientes; y el local cierra la venta con la prueba y el asesoramiento.</p></div>
+  <div class="folio"><span>PI finalizado · Estrategia promocional</span><span>15</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Piezas por red social</div>
+  <h2>Dos piezas por red, una por categoría</h2>
+  <p><span class="tag a">A · Mirá con otro color</span> genera deseo con el verano y el color. <span class="tag b">B · Tuyo y de nadie más</span> convierte con la escasez numerada y la preventa.</p>
+  <table>
+    <tr><th style="width:15%;">Red</th><th style="width:33%;">Pieza</th><th style="width:10%;">Cat.</th><th style="width:16%;">Formato</th><th>Copy de publicación</th></tr>
+    <tr><td><b>Instagram</b></td><td>Reel “Playa”</td><td>A</td><td>Reel 9:16 · 20 s</td><td>“El verano estaba en gris. Hasta que te pusiste un TUPÉ. Cinco colores, una forma de mirar.”</td></tr>
+    <tr><td><b>Instagram</b></td><td>Carrusel “Tu número” + story con enlace a WhatsApp</td><td>B</td><td>4:5 y 9:16</td><td>“Hay alrededor de 22 por color. Ninguno es igual al tuyo. Del 1 al 21/12 elegí el número de tu TUPÉ.”</td></tr>
+    <tr><td><b>TikTok</b></td><td>Video “Ciudad”</td><td>A</td><td>9:16 · 20 s</td><td>“Verano porteño, versión color. ¿Cuál es el tuyo? #QuéTupé”</td></tr>
+    <tr><td><b>TikTok</b></td><td>Video “Fábrica”</td><td>B</td><td>9:16 · 20 s</td><td>“Cada TUPÉ sale de nuestro taller en CABA con su número grabado. Este año, el número lo elegís vos.”</td></tr>
+    <tr><td><b>Facebook</b></td><td>Video “Persianas” como anuncio</td><td>A</td><td>9:16 / 4:5 · 20 s</td><td>“Mirá el verano con otro color. Lab001 y lab002, cinco colores de acetato argentino.”</td></tr>
+    <tr><td><b>Facebook</b></td><td>Video “Revelado” + post de preventa</td><td>B</td><td>4:5</td><td>“Un anteojo que es tuyo y de nadie más. Preventa Tu número, del 1 al 21 de diciembre.”</td></tr>
+  </table>
+  <p class="small">El spot original de 15 s queda como cierre de stories y recordación de marca. Los videos están en formato MP4 1080×1920, 60 fps.</p>
+  <div class="folio"><span>PI finalizado · Piezas</span><span>16</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Piezas · Instagram</div>
+  <div class="vid">
+    <div class="meta"><h3><span class="tag">Instagram</span><span class="tag a">A</span> Reel “Playa” · pieza principal</h3><span class="file">tupe_main_20s.mp4</span></div>
+    <div class="strip"><img src="img/frames/tupe2_1.5.jpg"><img src="img/frames/tupe2_4.5.jpg"><img src="img/frames/tupe2_8.jpg"><img src="img/frames/tupe2_11.jpg"><img src="img/frames/tupe2_15.jpg"><img src="img/frames/tupe2_19.jpg"></div>
+    <p>El verano está en gris y solo a través de cada lente se ve en color; cada modelo lo tiñe distinto. En el drop la cámara entra en el lente y del otro lado está el verano entero: “¡QUÉ TUPÉ!”.</p>
+  </div>
+  <h3><span class="tag">Instagram</span><span class="tag b">B</span> Carrusel “Tu número” · 4 placas</h3>
+  <div class="grid3" style="grid-template-columns:repeat(4,1fr); gap:3mm;">
+    <div class="slide" style="background:#E4E1DD;">
+      <img src="assets/fullgray_violeta.png" style="width:44%; left:5%; top:30%;"><img src="assets/fullgray_caramelo.png" style="width:44%; left:51%; top:30%;">
+      <img src="assets/fullgray_gris.png" style="width:44%; left:5%; top:48%;"><img src="assets/full_fluo.png" style="width:48%; left:49%; top:47%;">
+      <div class="t" style="top:7%; font-size:12pt;">Hay alrededor de 22 iguales.</div>
+      <div class="t" style="bottom:7%; font-size:12pt;">Ninguno es <span class="hl">el tuyo.</span></div>
+    </div>
+    <div class="slide">
+      <img src="assets/side_fluo.png" style="width:92%; left:4%; top:6%;">
+      <div style="position:absolute; left:76%; top:43%; width:9mm; height:9mm; border:.6mm solid var(--coral); border-radius:50%;"></div>
+      <div class="t" style="bottom:7%; font-size:9.5pt;">N° de serie en la patilla. Diseño de autor. Hecho en Argentina.</div>
+    </div>
+    <div class="slide">
+      <div class="t" style="top:9%; font-size:9.5pt;">Este verano, el número lo elegís vos.</div>
+      <div class="t" style="top:36%; font-size:21pt; text-align:center; white-space:nowrap;">N° __/22</div>
+      <div class="t" style="bottom:8%; font-size:8pt; font-family:IDSemi; text-transform:none; line-height:1.35;">Preventa <b>Tu número</b><br>1 al 21 de diciembre</div>
+    </div>
+    <div class="slide" style="background:var(--ink); color:var(--bg);">
+      <div style="position:absolute; top:22%; left:0; right:0; display:flex; justify-content:center;"><canvas class="logo" data-w="36" data-col="#FAF5F2"></canvas></div>
+      <div class="t" style="top:48%; font-size:10pt; text-align:center;">Escribinos<br><span class="hl" style="color:var(--ink);">QUIERO MI NÚMERO</span></div>
+      <div class="t" style="bottom:16%; font:7pt IDMedium; text-transform:none; text-align:center;">WhatsApp · carladisi.com/tupe</div>
+      <div style="position:absolute; bottom:5%; left:0; right:0; display:flex; justify-content:center;"><canvas class="sign" data-w="22" data-col="#E54F4E"></canvas></div>
+    </div>
+  </div>
+  <p class="small" style="margin-top:3mm;">Placas 1080×1350. La story acompaña con el anteojo verde flúo, la pregunta “¿Cuál es tu número?” y un sticker de enlace a WhatsApp.</p>
+  <div class="folio"><span>PI finalizado · Piezas · Instagram</span><span>17</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Piezas · TikTok</div>
+  <div class="vid">
+    <div class="meta"><h3><span class="tag">TikTok</span><span class="tag a">A</span> Video “Ciudad”</h3><span class="file">tupe_ciudad_20s.mp4</span></div>
+    <div class="strip"><img src="img/frames/tupe4_1.5.jpg"><img src="img/frames/tupe4_4.5.jpg"><img src="img/frames/tupe4_8.jpg"><img src="img/frames/tupe4_11.jpg"><img src="img/frames/tupe4_15.jpg"><img src="img/frames/tupe4_19.jpg"></div>
+    <p>El verano porteño, no la playa. La cámara sube un edificio piso por piso y cada piso se enciende de color desde su TUPÉ. En la terraza, los cinco quedan colgados del tendedero con su número de serie y el viento se lleva cuatro. Música: cumbia digital que se acerca piso a piso.</p>
+  </div>
+  <div class="vid">
+    <div class="meta"><h3><span class="tag">TikTok</span><span class="tag b">B</span> Video “Fábrica”</h3><span class="file">tupe_fabrica_20s.mp4</span></div>
+    <div class="strip"><img src="img/frames/tupe6_1.5.jpg"><img src="img/frames/tupe6_4.5.jpg"><img src="img/frames/tupe6_8.jpg"><img src="img/frames/tupe6_11.jpg"><img src="img/frames/tupe6_15.jpg"><img src="img/frames/tupe6_19.jpg"></div>
+    <p>El taller propio en CABA: el láser corta una plancha de acetato gris y el color asoma por el corte. El tambor de pulido hace girar los cinco TUPÉ y el láser graba “N° 07/24” en la patilla. Es el reason why más fuerte frente a importados y réplicas.</p>
+  </div>
+  <div class="folio"><span>PI finalizado · Piezas · TikTok</span><span>18</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Piezas · Facebook</div>
+  <div class="vid">
+    <div class="meta"><h3><span class="tag">Facebook</span><span class="tag a">A</span> Video “Persianas” · anuncio</h3><span class="file">tupe_persianas_20s.mp4</span></div>
+    <div class="strip"><img src="img/frames/tupe3_1.5.jpg"><img src="img/frames/tupe3_4.5.jpg"><img src="img/frames/tupe3_8.jpg"><img src="img/frames/tupe3_11.jpg"><img src="img/frames/tupe3_15.jpg"><img src="img/frames/tupe3_19.jpg"></div>
+    <p>La pantalla es una persiana de cinco tiras, una por color, que giran del gris al color. El drop son seis cortes duros de color-blocking. Ordena la colección como sistema.</p>
+  </div>
+  <div class="vid">
+    <div class="meta"><h3><span class="tag">Facebook</span><span class="tag b">B</span> Video “Revelado”</h3><span class="file">tupe_revelado_20s.mp4</span></div>
+    <div class="strip"><img src="img/frames/tupe5_1.5.jpg"><img src="img/frames/tupe5_4.5.jpg"><img src="img/frames/tupe5_8.jpg"><img src="img/frames/tupe5_11.jpg"><img src="img/frames/tupe5_15.jpg"><img src="img/frames/tupe5_19.jpg"></div>
+    <p>Una cámara instantánea dispara sobre una mesa en blanco y negro y cada foto se revela a color. El estuche, el paño y un certificado de serie convierten el número en un objeto para guardar.</p>
+  </div>
+  <div class="folio"><span>PI finalizado · Piezas · Facebook</span><span>19</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Piezas · Facebook</div>
+  <h3><span class="tag">Facebook</span><span class="tag b">B</span> Post de la preventa · 1080×1350</h3>
+  <div style="display:flex; gap:8mm; align-items:flex-start;">
+    <div class="slide" style="width:92mm;">
+      <div class="t" style="top:7%; font-size:15pt;">Un anteojo que es tuyo y de <span class="hl">nadie más.</span></div>
+      <img src="assets/full_violeta.png" style="width:56%; left:3%; top:36%; transform:rotate(-6deg);">
+      <img src="assets/full_caramelo.png" style="width:52%; left:44%; top:38%; transform:rotate(5deg);">
+      <img src="assets/full_fluo.png" style="width:54%; left:22%; top:53%;">
+      <img src="assets/full_gris.png" style="width:50%; left:2%; top:68%; transform:rotate(4deg);">
+      <img src="assets/full_nude.png" style="width:52%; left:46%; top:69%; transform:rotate(-5deg);">
+      <div class="t" style="bottom:5%; font:7.6pt IDSemi; text-transform:none;">Elegí el número de serie de tu TUPÉ · 1 al 21/12</div>
+    </div>
+    <div style="flex:1;">
+      <p><b>Objetivo:</b> llevar a la conversación por WhatsApp a quienes ya vieron las piezas de la categoría A (retargeting).</p>
+      <p><b>Botón del anuncio:</b> “Enviar mensaje”.</p>
+      <p><b>Segmentación:</b> personas que vieron al menos el 50% de los videos “Persianas” o “Revelado”, seguidores de @carladisi e intereses en moda y diseño en CABA y zona norte.</p>
+      <p><b>Por qué funciona:</b> muestra los cinco colores juntos (deseo de colección) y cierra con la promesa de la marca.</p>
+    </div>
+  </div>
+  <div class="folio"><span>PI finalizado · Piezas · Facebook</span><span>20</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Marketing directo</div>
+  <h2>Marketing directo sobre la base de clientes</h2>
+  <p>La base de datos de la marca (compras online, newsletter, WhatsApp y turnos de la óptica) hoy no se usa para TUPÉ. La campaña la segmenta y le habla a cada grupo con un mensaje propio.</p>
+  <table>
+    <tr><th style="width:27%;">Segmento</th><th style="width:12%;">Canal</th><th>Mensaje</th><th style="width:18%;">Momento</th></tr>
+    <tr><td>Compraron anteojos de sol</td><td>WhatsApp</td><td>“Este verano te guardamos un número. Elegí el de tu TUPÉ antes que nadie.”</td><td>28/11 · acceso anticipado 72 h</td></tr>
+    <tr><td>Tienen turno en la óptica</td><td>WhatsApp</td><td>“Probalo con otro color: te reservamos un turno prioritario.”</td><td>1/12</td></tr>
+    <tr><td>Suscriptores del newsletter</td><td>Mail</td><td>Asunto: “Tu número te espera”</td><td>1/12 y 15/12</td></tr>
+    <tr><td>Escribieron y no compraron</td><td>WhatsApp</td><td>“Quedan pocos números en tu color.”</td><td>18/12</td></tr>
+  </table>
+  <div style="display:flex; gap:10mm; justify-content:center; margin-top:4mm;">
+    <div class="phone"><div class="scr wa">
+      <div class="bar"><i></i>Carla Di Sí</div>
+      <div class="bub" style="padding:1mm;"><img src="assets/full_fluo.png" style="width:100%; display:block; background:#FAF5F2; border-radius:1.4mm;"></div>
+      <div class="bub">Hola Juli, soy Carla. Este verano lanzamos TUPÉ y antes de abrirlo a todos te quiero dar algo: elegir el número de serie de tu anteojo.</div>
+      <div class="bub">Cada color tiene alrededor de 22 piezas. Respondé con el color que te guste y te digo qué números quedan. ¿Cuál es el tuyo?</div>
+      <div class="bub me">QUIERO MI NÚMERO 🙌 Verde flúo, el 07</div>
+      <div class="bub">¡Qué tupé! El 07 es tuyo. Te lo reservo 🟢</div>
+    </div></div>
+    <div class="mail">
+      <div class="hd"><canvas class="logo" data-w="30" data-col="#2B2427" style="margin:0 auto;"></canvas><div style="font:6pt IDMedium; color:#6F6866; margin-top:1.5mm;">Asunto: Tu número te espera</div></div>
+      <img src="img/frames/tupe5_11.jpg" style="width:100%; height:48mm; object-fit:cover; display:block;">
+      <div class="bd">
+        <p style="font:9pt/1.15 IDBlack; text-transform:uppercase;">Un anteojo que es tuyo y de nadie más.</p>
+        <p>Hola [nombre]: cada TUPÉ se fabrica en una tirada de alrededor de 22 piezas por color, con su número grabado en la patilla. Del 1 al 21 de diciembre podés elegir el tuyo.</p>
+        <div style="display:flex; gap:1mm; margin:2mm 0;"><img src="assets/full_violeta.png" style="width:20%;"><img src="assets/full_caramelo.png" style="width:20%;"><img src="assets/full_fluo.png" style="width:20%;"><img src="assets/full_gris.png" style="width:20%;"><img src="assets/full_nude.png" style="width:20%;"></div>
+        <div style="text-align:center; margin:3mm 0;"><span class="btn">Elegir mi número</span></div>
+        <p style="color:#6F6866; text-align:center; margin:0;">Probalos en Palermo Soho</p>
+      </div>
+    </div>
+  </div>
+  <div class="folio"><span>PI finalizado · Marketing directo</span><span>21</span></div>
+</section>
+
+<section class="page">
+  <div class="kicker">03 · Evaluación del engagement</div>
+  <h2>Cómo se mide la campaña</h2>
+  <p>La campaña no se publicó, así que la evaluación es una <b>proyección</b>: define qué se mide, con qué fórmula y qué valor se espera. Las metas son estimaciones de referencia; conviene ajustarlas con los datos reales de @carladisi.</p>
+  <div class="box" style="text-align:center; font:11pt IDMedium;">ER = (me gusta + comentarios + guardados + compartidos) ÷ alcance × 100</div>
+  <table>
+    <tr><th style="width:13%;">Red</th><th style="width:26%;">Pieza</th><th style="width:33%;">Indicador principal</th><th>Meta proyectada</th></tr>
+    <tr><td>Instagram</td><td>Reel Playa (A)</td><td>ER sobre alcance · vistas completas</td><td>ER 4% · 40% de vistas completas</td></tr>
+    <tr><td>Instagram</td><td>Carrusel Tu número (B)</td><td>Guardados y compartidos · toques a WhatsApp</td><td>1,5% de guardados · 150 toques</td></tr>
+    <tr><td>TikTok</td><td>Ciudad (A)</td><td>Tiempo de visualización · compartidos</td><td>60% de retención a 10 s</td></tr>
+    <tr><td>TikTok</td><td>Fábrica (B)</td><td>Comentarios “¿cuál es tu número?” · clics al perfil</td><td>100 comentarios</td></tr>
+    <tr><td>Facebook</td><td>Persianas (A)</td><td>Costo por mil impresiones · ER</td><td>ER 2%</td></tr>
+    <tr><td>Facebook</td><td>Revelado + post (B)</td><td>Clics y mensajes</td><td>1% de CTR</td></tr>
+    <tr><td>WhatsApp</td><td>Acceso anticipado</td><td>Tasa de respuesta · reservas</td><td>25% de respuesta</td></tr>
+    <tr><td>Mail</td><td>“Tu número te espera”</td><td>Apertura · clics</td><td>35% de apertura · 4% de clics</td></tr>
+  </table>
+  <h3>Indicadores de negocio</h3>
+  <ul>
+    <li>300 conversaciones de WhatsApp iniciadas con “QUIERO MI NÚMERO”.</li>
+    <li>Al menos 2 de los 5 colores agotados en preventa.</li>
+    <li>Publicaciones de clientes con #MiNúmeroTUPÉ.</li>
+  </ul>
+  <div class="folio"><span>PI finalizado · Engagement</span><span>22</span></div>
+</section>
+
+<!-- ============ 04 REFLEXIÓN ============ -->
+<section class="page">
+  <div class="kicker">04 · Reflexión sobre el proceso de aprendizaje</div>
+  <h1>Reflexión</h1>
+  <p>Este proyecto me ayudó a entender que una campaña no empieza en una idea linda, sino en un problema bien definido. Cuando analicé TUPÉ encontré algo que parecía contradictorio: una línea con un diferencial muy fuerte, la tirada numerada, que la propia marca comunicaba como un dato de ficha técnica. Ese hallazgo ordenó todo lo que vino después.</p>
+  <p>A lo largo del proceso exploré cómo pasar de un dato a un concepto. <em>Mirá el verano con otro color</em> nació de cruzar la temporada con lo que hace especial al producto, y lo puse a prueba en seis versiones audiovisuales muy distintas: la playa, unas persianas, la ciudad, fotos instantáneas y el taller. Para producirlas trabajé con herramientas de inteligencia artificial que generan las piezas por código; mi rol fue dirigir: definir el concepto, elegir, descartar y corregir. Comparar versiones me enseñó que la misma idea puede contarse de muchas maneras, y que elegir una es también una decisión estratégica.</p>
+  <p>El mayor desafío fue la acción promocional. Mi primer impulso era un descuento, pero en un producto premium y escaso eso iba en contra de todo lo que la campaña quería construir. Llegar a “Tu número”, una promoción que no baja el precio sino que suma algo que solo TUPÉ puede dar, me hizo entender la diferencia entre vender más y vender mejor. Otro desafío fue medir: sin la campaña publicada, tuve que pensar qué indicadores importan para cada pieza y por qué.</p>
+  <p>Como logro, me llevo haber integrado todas las partes en un mismo sistema: el diagnóstico, el brief, el insight, las piezas, el marketing directo sobre la base de clientes y la acción promocional responden a una sola idea. También aprendí a fundamentar cada decisión, algo que voy a necesitar para defender mi trabajo frente a un cliente.</p>
+  <div style="position:absolute; right:18mm; bottom:24mm; font:italic 12pt IDMedium;">— Martin Trajterman</div>
+  <div class="folio"><span>Reflexión</span><span>23</span></div>
+</section>
+
+<!-- ============ 05 BIBLIOGRAFÍA ============ -->
+<section class="page">
+  <div class="kicker">05 · Bibliografía</div>
+  <h1>Bibliografía</h1>
+  <ul style="padding-left:0; list-style:none;">
+    <li>Carla Di Sí. (2026). <em>Sitio oficial</em>. https://carladisi.com</li>
+    <li>Carla Di Sí. (2026). <em>Sobre Carla</em>. https://carladisi.com/sobre-carla-di-si/</li>
+    <li>Carla Di Sí [@carladisi]. (2026). <em>Instagram</em>. https://www.instagram.com/carladisi/</li>
+    <li>iProfesional. (2026). <em>Lejos de la televisión, el nuevo negocio de Juana Repetto</em>.</li>
+    <li>La Nación. (s.f.). <em>Marcos de autor para vestir la mirada</em>.</li>
+    <li>Quinta Trends. (2018). <em>Carla Di Sí: diseño de anteojos por manos argentinas</em>.</li>
+    <li>Tapia, P. (s.f.). <em>Carla Di Sí: “Buscamos que ‘los Carla’ se transformen en súper anteojos”</em>. Time Out Buenos Aires.</li>
+    <li>Universidad de Palermo, Facultad de Diseño y Comunicación. (2026). <em>Guía de Proyecto Integrador: Publicidad IV</em>.</li>
+    <li>Universidad de Palermo, Facultad de Diseño y Comunicación. (2026). <em>Carpetas contenedoras de Proyectos Integradores DC</em>.</li>
+  </ul>
+  <div class="folio"><span>Bibliografía</span><span>24</span></div>
+</section>
+
+<!--ANEXO-->
+
+<script src="brand.js"></script>
+<script>
+document.fonts.ready.then(() => {
+  const MM = 96 / 25.4, DPR = 3;
+  for (const c of document.querySelectorAll("canvas.logo")) {
+    const wmm = +c.dataset.w, s = wmm * MM / 129, hmm = 44 * s / MM;
+    c.style.width = wmm + "mm"; c.style.height = hmm + "mm";
+    c.width = Math.round(wmm * MM * DPR); c.height = Math.round(hmm * MM * DPR);
+    const g = c.getContext("2d"); g.scale(s * DPR, s * DPR * 1.025); g.translate(0, 12);
+    for (const k of TUPE.order) { g.fillStyle = k === "accent" ? "#F8B414" : c.dataset.col; g.fill(tupePath(k)); }
+    drawCopyright(g, 123.5, 3.2, 4.2, .85, c.dataset.col);
+  }
+  for (const c of document.querySelectorAll("canvas.sign")) {
+    if (c.dataset.text) {   // firma del autor: nombre manuscrito simple
+      const wmm = +c.dataset.w; c.style.width = wmm + "mm"; c.style.height = wmm * .3 + "mm";
+      c.width = wmm * MM * DPR; c.height = wmm * .3 * MM * DPR;
+      const g = c.getContext("2d"); g.scale(DPR, DPR); g.font = `italic ${wmm * MM * .2}px "IDMedium"`; g.fillStyle = c.dataset.col;
+      g.fillText("— " + "Martin Trajterman", 0, wmm * MM * .2); continue;
+    }
+    const wmm = +c.dataset.w, s = wmm * MM / SIGN.w, hmm = 30 * s / MM;
+    c.style.width = wmm + "mm"; c.style.height = hmm + "mm";
+    c.width = Math.round(wmm * MM * DPR); c.height = Math.round(hmm * MM * DPR);
+    const g = c.getContext("2d"); g.scale(DPR, DPR); drawSignature(g, 0, 0, s, 1, c.dataset.col);
+  }
+  window.READY = true;
+});
+</script>
+</body>
+</html>
